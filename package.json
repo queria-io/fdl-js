@@ -1,5 +1,5 @@
 {
-  "name": "fdl-js",
+  "name": "@flo8s/fdl-js",
   "version": "0.1.0",
   "description": "Read DuckLake tables published as FDL repositories, without DuckDB: resolve refs, list a version's files and read Parquet by range",
   "keywords": [
@@ -30,6 +30,9 @@
       "types": "./dist/node.d.ts",
       "default": "./dist/node.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",

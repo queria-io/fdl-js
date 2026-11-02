@@ -1,7 +1,7 @@
 // A repository in a local folder, for Node and other runtimes with node:fs
 import { open, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { NotFoundError, type Store } from "./store";
+import { NotFoundError, type Store } from "./store.js";
 
 const missing = (e: unknown) => (e as { code?: string }).code === "ENOENT";
 

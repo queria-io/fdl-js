@@ -4,6 +4,14 @@ Read DuckLake tables published as [FDL](https://fdl.flo8s.com) repositories from
 
 It reads; it does not write. It reads only tables whose files can be read as they are: a table with deleted rows or renamed columns is refused, since reading its Parquet files without the catalog would return deleted rows or miss columns. Read those with DuckDB.
 
+## Install
+
+```bash
+npm install fdl-js
+```
+
+It is an ES module with type definitions, for Node 20 or later and any bundler.
+
 ## Use
 
 ```ts
@@ -46,6 +54,9 @@ pnpm install
 pnpm test
 pnpm typecheck
 pnpm check
+pnpm build       # dist/
 ```
+
+To release, set `version` in `package.json` in a pull request, merge it, and push the tag `v<version>`. The Release workflow publishes it to npm.
 
 `test/fixture/repo` is a small repository made by the `fdl` command: `FDL=fdl test/make-fixture.sh` remakes it.

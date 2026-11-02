@@ -1,3 +1,3 @@
-export * from "./store";
-export * from "./repo";
-export * from "./parquet";
+export * from "./store.js";
+export * from "./repo.js";
+export * from "./parquet.js";

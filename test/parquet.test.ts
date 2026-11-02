@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { fileStore } from "../src/node";
-import { memoryFooterCache, openParquet, readRows, readWhere, rowRangesFor } from "../src/parquet";
-import { open, tableFiles } from "../src/repo";
+import { fileStore } from "../src/node.js";
+import {
+  memoryFooterCache,
+  openParquet,
+  readRows,
+  readWhere,
+  rowRangesFor,
+} from "../src/parquet.js";
+import { open, tableFiles } from "../src/repo.js";
 
 const store = fileStore(new URL("./fixture/repo/", import.meta.url).pathname);
 const town = async () => tableFiles(await open(store), "geo.town")![0]!;

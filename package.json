@@ -1,7 +1,14 @@
 {
   "name": "fdl-js",
   "version": "0.1.0",
-  "description": "Read FDL repositories from JavaScript: resolve refs, list a version's files and read Parquet by range",
+  "description": "Read DuckLake tables published as FDL repositories, without DuckDB: resolve refs, list a version's files and read Parquet by range",
+  "keywords": [
+    "cloudflare-workers",
+    "ducklake",
+    "fdl",
+    "hyparquet",
+    "parquet"
+  ],
   "license": "MIT",
   "files": [
     "src"

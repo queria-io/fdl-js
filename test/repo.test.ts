@@ -131,6 +131,7 @@ describe("refreshing", () => {
     let t = 0;
     let calls = 0;
     let fail = false;
+    const errors: string[] = [];
     const get = refreshing(
       async () => {
         calls += 1;
@@ -138,7 +139,7 @@ describe("refreshing", () => {
         return calls;
       },
       100,
-      () => t,
+      { now: () => t, onError: (e) => errors.push(String(e)) },
     );
     expect(await get()).toBe(1);
     t = 50;
@@ -146,6 +147,7 @@ describe("refreshing", () => {
     t = 150;
     fail = true;
     expect(await get()).toBe(1);
+    expect(errors).toEqual(["Error: down"]);
     t = 300;
     fail = false;
     expect(await get()).toBe(3);

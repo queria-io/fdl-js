@@ -162,16 +162,32 @@ export const tableFiles = (version: Version, table: string): DataFile[] | undefi
   });
 };
 
+export type RefreshingOptions = {
+  /** Called when a reload fails and the last result is kept, so the failure can be logged */
+  onError?: (error: unknown) => void;
+  now?: () => number;
+};
+
 /**
  * Wraps load so that its result is kept for ttlMs. When a reload fails, the last result is
- * used until the next try, so a ref that cannot be read for a moment does not stop a reader
+ * used until the next try, so a ref that cannot be read for a moment does not stop a reader.
+ * The failure goes to onError; with no last result, the returned promise rejects instead
  */
-export const refreshing = <T>(load: () => Promise<T>, ttlMs: number, now = () => Date.now()) => {
+export const refreshing = <T>(
+  load: () => Promise<T>,
+  ttlMs: number,
+  { onError, now = () => Date.now() }: RefreshingOptions = {},
+) => {
   let kept: { at: number; value: Promise<T> } | null = null;
   return (): Promise<T> => {
     if (kept && now() - kept.at < ttlMs) return kept.value;
     const previous = kept?.value;
-    const value = previous ? load().catch(() => previous) : load();
+    const value = previous
+      ? load().catch((error: unknown) => {
+          onError?.(error);
+          return previous;
+        })
+      : load();
     const entry = { at: now(), value };
     kept = entry;
     value.catch(() => {

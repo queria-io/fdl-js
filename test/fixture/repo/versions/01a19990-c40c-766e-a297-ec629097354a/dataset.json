@@ -1,0 +1,64 @@
+{
+  "name": "towns",
+  "title": "Towns",
+  "tables": [
+    {
+      "schema": "geo",
+      "name": "town",
+      "rows": 10000,
+      "fields": [
+        {
+          "name": "lg_code",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "n",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "type": "varchar",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "schema": "main",
+      "name": "empty",
+      "rows": 0,
+      "fields": [
+        {
+          "name": "x",
+          "type": "int32",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "schema": "main",
+      "name": "gone",
+      "rows": 7,
+      "fields": [
+        {
+          "name": "i",
+          "type": "int64",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "schema": "main",
+      "name": "renamed",
+      "rows": 10,
+      "fields": [
+        {
+          "name": "b",
+          "type": "int64",
+          "nullable": true
+        }
+      ]
+    }
+  ]
+}

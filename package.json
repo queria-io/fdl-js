@@ -1,0 +1,40 @@
+{
+  "name": "fdl-js",
+  "version": "0.1.0",
+  "description": "Read DuckLake tables published as FDL repositories, without DuckDB: resolve refs, list a version's files and read Parquet by range",
+  "keywords": [
+    "cloudflare-workers",
+    "ducklake",
+    "fdl",
+    "hyparquet",
+    "parquet"
+  ],
+  "license": "MIT",
+  "files": [
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "oxlint && oxfmt --check .",
+    "fix": "oxlint --fix && oxfmt ."
+  },
+  "dependencies": {
+    "fzstd": "^0.1.1",
+    "hyparquet": "^1.32.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261101.1",
+    "@types/node": "^22.0.0",
+    "oxfmt": "^0.73.0",
+    "oxlint": "^1.76.0",
+    "typescript": "^5.7.4",
+    "vitest": "^4.1.0"
+  },
+  "packageManager": "pnpm@10.17.1"
+}

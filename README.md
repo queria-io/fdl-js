@@ -7,7 +7,7 @@ It reads; it does not write. It reads only tables whose files can be read as the
 ## Install
 
 ```bash
-npm install @udus/fdl-js
+npm install @queria/fdl-js
 ```
 
 It is an ES module with type definitions, for Node 20 or later and any bundler.
@@ -15,7 +15,7 @@ It is an ES module with type definitions, for Node 20 or later and any bundler.
 ## Use
 
 ```ts
-import { httpStore, open, openParquet, readWhere, tableFiles } from "@udus/fdl-js";
+import { httpStore, open, openParquet, readWhere, tableFiles } from "@queria/fdl-js";
 
 const store = httpStore("https://data.example.org/towns/");
 const version = await open(store); // HEAD, or open(store, "2025-final"), or a version ID
@@ -34,7 +34,7 @@ A store is where the repository's root is. Keys are the layout's paths (`fdl.jso
 | --- | --- |
 | `httpStore(root, { fetch, headers })` | A URL, with `Range` requests |
 | `r2Store(bucket, prefix)` | An R2 binding in Workers |
-| `fileStore(dir)` from `@udus/fdl-js/node` | A local folder |
+| `fileStore(dir)` from `@queria/fdl-js/node` | A local folder |
 
 Each retries a failed request once. A store is three functions (`text`, `size`, `range`), so another one is a few lines.
 

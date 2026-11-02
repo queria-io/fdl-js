@@ -1,5 +1,5 @@
 {
-  "name": "@flo8s/fdl-js",
+  "name": "@udus/fdl-js",
   "version": "0.1.0",
   "description": "Read DuckLake tables published as FDL repositories, without DuckDB: resolve refs, list a version's files and read Parquet by range",
   "keywords": [

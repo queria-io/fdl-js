@@ -1,5 +1,5 @@
 {
-  "name": "fdl-js",
+  "name": "@queria-io/fdl-js",
   "version": "0.1.0",
   "description": "Read DuckLake tables published as FDL repositories, without DuckDB: resolve refs, list a version's files and read Parquet by range",
   "keywords": [
@@ -9,16 +9,34 @@
     "hyparquet",
     "parquet"
   ],
+  "homepage": "https://github.com/queria-io/fdl-js#readme",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/queria-io/fdl-js.git"
+  },
   "files": [
+    "dist",
     "src"
   ],
   "type": "module",
+  "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./node": "./src/node.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "default": "./dist/node.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "pnpm build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "check": "oxlint && oxfmt --check .",
@@ -35,6 +53,9 @@
     "oxlint": "^1.76.0",
     "typescript": "^5.7.4",
     "vitest": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "packageManager": "pnpm@10.17.1"
 }

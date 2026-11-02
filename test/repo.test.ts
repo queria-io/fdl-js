@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fileStore } from "../src/node";
+import { fileStore } from "../src/node.js";
 import {
   FdlError,
   open,
@@ -8,8 +8,8 @@ import {
   resolve,
   tableFiles,
   tableNames,
-} from "../src/repo";
-import type { Store } from "../src/store";
+} from "../src/repo.js";
+import type { Store } from "../src/store.js";
 
 const store = fileStore(new URL("./fixture/repo/", import.meta.url).pathname);
 

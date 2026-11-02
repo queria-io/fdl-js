@@ -1,0 +1,32 @@
+name: Release
+
+# Publishes to npm when a tag v<version> is pushed. The version in package.json
+# must match the tag. npm authorizes this workflow by trusted publishing (OIDC),
+# so no token is stored here.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - name: Check the tag matches package.json
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - run: pnpm check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: npm publish --provenance --access public

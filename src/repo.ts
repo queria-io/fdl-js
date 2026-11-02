@@ -1,6 +1,6 @@
 // Resolve a ref to a version and list the data files of its tables, following
 // https://fdl.flo8s.com/spec/reading. Only files.json is read: the catalog is never opened
-import { NotFoundError, type Store } from "./store";
+import { NotFoundError, type Store } from "./store.js";
 
 /** The FDL major versions this reader knows */
 const KNOWN_MAJOR = "0";

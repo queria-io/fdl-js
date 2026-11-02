@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { openParquet, readWhere } from "../src/parquet";
-import { open, tableFiles } from "../src/repo";
-import { httpStore, r2Store, type R2Like } from "../src/store";
+import { openParquet, readWhere } from "../src/parquet.js";
+import { open, tableFiles } from "../src/repo.js";
+import { httpStore, r2Store, type R2Like } from "../src/store.js";
 
 const dir = new URL("./fixture/repo/", import.meta.url).pathname;
 const bytes = (key: string) => readFile(dir + key).catch(() => null);

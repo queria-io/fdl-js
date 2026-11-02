@@ -8,8 +8,8 @@ import {
   parquetMetadata,
   parquetReadObjects,
 } from "hyparquet";
-import type { DataFile } from "./repo";
-import type { Store } from "./store";
+import type { DataFile } from "./repo.js";
+import type { Store } from "./store.js";
 
 /** DuckDB writes zstd by default. fzstd is plain JS, so it runs in Workers and browsers */
 export const compressors: Compressors = { ZSTD: (input) => decompress(input) };

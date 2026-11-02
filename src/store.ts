@@ -49,6 +49,10 @@ export type HttpOptions = {
   headers?: Record<string, string>;
 };
 
+// HEAD, refs and expired.json change; everything else in a repository never does
+const mutable = (key: string) =>
+  key === "HEAD" || key === "refs.json" || key.startsWith("refs/") || key.endsWith("/expired.json");
+
 /** A repository served over HTTP at root (ending in "/") */
 export const httpStore = (
   root: string,
@@ -67,12 +71,15 @@ export const httpStore = (
   };
   return {
     text: async (key) => {
-      const res = await request(key, { cache: "no-store" });
+      const res = await request(key, mutable(key) ? { cache: "no-store" } : {});
       return ok(res, key) ? res.text() : null;
     },
     size: async (key) => {
       const res = await request(key, { method: "HEAD" });
-      return ok(res, key) ? Number(res.headers.get("content-length")) : null;
+      if (!ok(res, key)) return null;
+      const length = res.headers.get("content-length");
+      if (length === null) throw new Error(`no content-length for ${root + key}`);
+      return Number(length);
     },
     range: async (key, offset, length) => {
       const res = await request(key, {

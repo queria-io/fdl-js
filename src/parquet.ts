@@ -92,10 +92,11 @@ export const openParquet = async (
   { cache, onRead }: OpenOptions = {},
 ): Promise<ParquetFile> => {
   const file = asyncBuffer(store, key, bytes, onRead);
-  const hit = await cache?.get(key);
+  // The cache only saves reads: when it fails, the footer is read from the file
+  const hit = await cache?.get(key).catch(() => undefined);
   if (hit) return { key, file, metadata: parquetMetadata(hit) };
   const footer = await readFooter(file, footerBytes);
-  await cache?.put(key, footer);
+  await cache?.put(key, footer).catch(() => {});
   return { key, file, metadata: parquetMetadata(footer) };
 };
 
@@ -109,9 +110,27 @@ const columnIndex = (metadata: FileMetaData, column: string): number => {
   return i;
 };
 
+// A UTF-16 code unit, shifted so that units compare in code point order: surrogates (U+10000
+// and above) after U+E000-U+FFFF
+const unit = (s: string, i: number) => {
+  const u = s.charCodeAt(i);
+  return u >= 0xe000 ? u - 0x800 : u >= 0xd800 ? u + 0x2000 : u;
+};
+
+// Strings compare in code point order, which is UTF-8 byte order, the order of Parquet's
+// statistics. JavaScript's < compares UTF-16 code units, which differs past U+FFFF
+const atMost = (a: Value, b: Value): boolean => {
+  if (typeof a !== "string" || typeof b !== "string") return a <= b;
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    const d = unit(a, i) - unit(b, i);
+    if (d !== 0) return d < 0;
+  }
+  return a.length <= b.length;
+};
+
 const within = (value: Value, min: unknown, max: unknown) =>
-  (min === undefined || min === null || (min as Value) <= value) &&
-  (max === undefined || max === null || value <= (max as Value));
+  (min === undefined || min === null || atMost(min as Value, value)) &&
+  (max === undefined || max === null || atMost(value, max as Value));
 
 /**
  * The rows of the row groups whose min/max for column can hold value. Row groups without
@@ -154,12 +173,15 @@ export const readRows = <T = Record<string, unknown>>(
   }) as Promise<T[]>;
 };
 
-// INT64 columns come back as bigint; let 5 and 5n match
+// INT64 columns come back as bigint; let 5 and 5n match. == compares a bigint with a number
+// by value, and unlike BigInt() it does not throw for 1.5
 const same = (a: unknown, b: Value) =>
   a === b ||
-  ((typeof a === "bigint" || typeof a === "number") &&
+  ((typeof a === "bigint" || typeof b === "bigint") &&
+    (typeof a === "bigint" || typeof a === "number") &&
     typeof b !== "string" &&
-    BigInt(a) === BigInt(b));
+    // oxlint-disable-next-line eqeqeq
+    a == b);
 
 /**
  * The rows where column equals value. Reads only the row groups that can hold it, then drops

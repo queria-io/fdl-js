@@ -58,6 +58,26 @@ describe("reading rows", () => {
     ]);
   });
 
+  it("finds nothing, without throwing, for a fraction on an integer column", async () => {
+    const parquet = await openParquet(store, await town());
+    expect(await readWhere<Town>(parquet, "n", 42.5)).toEqual([]);
+  });
+
+  it("compares strings in UTF-8 byte order, as Parquet statistics do", () => {
+    // U+FF21 sorts before U+1F600 in UTF-8, after it in UTF-16
+    const group = (min: string, max: string) => ({
+      num_rows: 10n,
+      columns: [{ meta_data: { statistics: { min_value: min, max_value: max } } }],
+    });
+    const metadata = {
+      schema: [{ name: "root" }, { name: "s" }],
+      row_groups: [group("\uFF21", "\u{1F600}")],
+    } as unknown as Parameters<typeof rowRangesFor>[0];
+    expect(rowRangesFor(metadata, "s", "\uFF21")).toEqual([{ rowStart: 0, rowEnd: 10 }]);
+    expect(rowRangesFor(metadata, "s", "\uFF22")).toEqual([{ rowStart: 0, rowEnd: 10 }]);
+    expect(rowRangesFor(metadata, "s", "\u{1F601}")).toEqual([]);
+  });
+
   it("skips columns the file lacks", async () => {
     const parquet = await openParquet(store, await town());
     const rows = await readRows(parquet, {

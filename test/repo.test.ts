@@ -106,6 +106,24 @@ describe("readVersion", () => {
     );
     expect(() => tableFiles(version, "main.t")).toThrow(/outside/);
   });
+
+  it("refuses a path that leaves the repository percent-encoded", async () => {
+    const { second } = await versions();
+    const list = {
+      tables: { "main.t": { files: [{ path: "%2e%2e/%2E%2e/x.parquet", rows: 1, bytes: 1 }] } },
+    };
+    const version = await readVersion(
+      patched({ [`versions/${second}/files.json`]: JSON.stringify(list) }),
+      second,
+    );
+    expect(() => tableFiles(version, "main.t")).toThrow(/outside/);
+  });
+
+  it("refuses a data_dir outside the repository", async () => {
+    await expect(open(patched({ "fdl.json": '{"fdl":"0.1","data_dir":"../x/"}' }))).rejects.toThrow(
+      /outside/,
+    );
+  });
 });
 
 describe("refreshing", () => {

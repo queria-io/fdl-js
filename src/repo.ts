@@ -54,10 +54,23 @@ const checkMajor = (fdl: string, what: string) => {
     throw new FdlError(`${what} is FDL ${fdl}, unknown to this reader`);
 };
 
+// A relative path that stays under the root. Dot segments are also caught percent-encoded,
+// since URLs resolve %2e%2e as ..
+const safe = (path: string) =>
+  !path.startsWith("/") &&
+  !path.includes("://") &&
+  !path.replace(/%2e/gi, ".").split(/[/\\]/).includes("..");
+
 export const readConfig = async (store: Store): Promise<Config> => {
   const raw = await json<Partial<Config>>(store, "fdl.json");
   checkMajor(String(raw.fdl), "the repository");
-  return { ...raw, fdl: String(raw.fdl), data_dir: raw.data_dir ?? "data/" };
+  const dataDir = raw.data_dir ?? "data/";
+  if (!safe(dataDir)) throw new FdlError(`data_dir is outside the repository: ${dataDir}`);
+  return {
+    ...raw,
+    fdl: String(raw.fdl),
+    data_dir: dataDir === "" || dataDir.endsWith("/") ? dataDir : `${dataDir}/`,
+  };
 };
 
 /** Candidates for a short name, in Git's order (refs/<name>, refs/tags/<name>, refs/heads/<name>) */
@@ -73,6 +86,7 @@ const candidates = (rev: string): string[] =>
  */
 export const resolve = async (store: Store, rev = "HEAD"): Promise<string> => {
   if (VERSION_ID.test(rev)) return rev;
+  if (!safe(rev)) throw new FdlError(`no ref ${rev}`);
   const follow = async (key: string, depth: number): Promise<string | null> => {
     const text = await store.text(key);
     if (text === null) return null;
@@ -82,7 +96,10 @@ export const resolve = async (store: Store, rev = "HEAD"): Promise<string> => {
       return value;
     }
     if (depth > 4) throw new FdlError(`${key}: too many symbolic refs`);
-    return follow(value.slice(5).trim(), depth + 1);
+    const target = value.slice(5).trim();
+    if (!target.startsWith("refs/") || !safe(target))
+      throw new FdlError(`${key} names a ref outside refs/: ${target}`);
+    return follow(target, depth + 1);
   };
   const found = await candidates(rev).reduce<Promise<string | null>>(
     async (prev, key) => (await prev) ?? follow(key, 0),
@@ -95,15 +112,21 @@ export const resolve = async (store: Store, rev = "HEAD"): Promise<string> => {
 /** Reads a version: checks its record and expiry, and reads its files.json */
 export const readVersion = async (store: Store, id: string, config?: Config): Promise<Version> => {
   const dir = `versions/${id}/`;
-  const [cfg, record, expired] = await Promise.all([
+  const [cfg, text, expired] = await Promise.all([
     config ?? readConfig(store),
-    json<VersionRecord>(store, dir + "version.json"),
+    store.text(dir + "version.json"),
     store.text(dir + "expired.json"),
   ]);
+  // A withdrawn version may have lost its version.json, so expiry is checked first
+  if (expired !== null) throw new FdlError(`version ${id} is past retention or withdrawn`);
+  if (text === null) throw new NotFoundError(dir + "version.json");
+  const record = JSON.parse(text) as VersionRecord;
   if (record.id !== id) throw new FdlError(`${dir}version.json holds ${record.id}`);
   checkMajor(String(record.fdl), `version ${id}`);
-  if (expired !== null) throw new FdlError(`version ${id} is past retention or withdrawn`);
-  const files = await store.text(dir + (record.files?.path ?? "files.json"));
+  const filesPath = record.files?.path ?? "files.json";
+  if (!safe(filesPath))
+    throw new FdlError(`version ${id} names files.json outside it: ${filesPath}`);
+  const files = await store.text(dir + filesPath);
   if (files === null) throw new FdlError(`version ${id} has no files.json; read it with DuckDB`);
   return { config: cfg, record, files: JSON.parse(files) as FileList };
 };
@@ -116,9 +139,6 @@ export const open = async (store: Store, rev = "HEAD"): Promise<Version> => {
 
 /** The names (schema.table) of the version's tables */
 export const tableNames = (version: Version): string[] => Object.keys(version.files.tables);
-
-const safe = (path: string) =>
-  !path.startsWith("/") && !path.includes("://") && !path.split("/").includes("..");
 
 /**
  * The data files of a table (schema.table), or undefined when the version has no such table.

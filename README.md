@@ -57,6 +57,6 @@ pnpm check
 pnpm build       # dist/
 ```
 
-To release, set `version` in `package.json` in a pull request, merge it, and push the tag `v<version>`. The Release workflow publishes it to npm.
+To release, set `version` in `package.json` in a pull request and merge it, then run the Release workflow (Actions → Release → Run workflow). It publishes to npm, tags the commit `v<version>` and makes a GitHub release.
 
 `test/fixture/repo` is a small repository made by the `fdl` command: `FDL=fdl test/make-fixture.sh` remakes it.

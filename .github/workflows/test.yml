@@ -20,3 +20,9 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # The conformance suite of the specification (queria-io/fdl, conformance/)
+      - uses: actions/checkout@v5
+        with:
+          repository: queria-io/fdl
+          path: fdl
+      - run: python3 fdl/conformance/run.py -- node conformance/reader.mjs

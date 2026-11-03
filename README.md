@@ -47,6 +47,13 @@ Each retries a failed request once. A store is three functions (`text`, `size`, 
 
 [Reading](https://fdl.flo8s.com/spec/reading) in the specification: `HEAD` and refs are followed, `version.json` must name its own ID and a known `fdl` major version, a version with `expired.json` is refused, and file paths from `files.json` are read under `data_dir`. A version without `files.json` cannot be read with this library.
 
+It passes the specification's [conformance suite](https://github.com/queria-io/fdl/tree/main/conformance). Tables with deleted rows or renamed columns are left out, as the suite allows for a reader that does not apply them:
+
+```bash
+pnpm build
+python3 ../fdl/conformance/run.py -- node conformance/reader.mjs
+```
+
 ## Develop
 
 ```bash

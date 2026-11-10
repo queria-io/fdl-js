@@ -64,6 +64,13 @@ describe("expire", () => {
     expect(await expire(store, { keep: 1, now: NOW })).toEqual([]);
   });
 
+  it("lists what it would expire without changing anything", async () => {
+    const store = await memory();
+    const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
+    expect(await expire(store, { keep: 1, now: NOW, dryRun: true })).toEqual([first]);
+    expect(store.objects.has(`versions/${first}/expired.json`)).toBe(false);
+  });
+
   it("keeps the versions created since a time", async () => {
     const store = await memory();
     expect(

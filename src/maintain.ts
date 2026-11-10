@@ -129,6 +129,8 @@ export type ExpireOptions = {
   /** Also keep the versions created at or after this time */
   since?: Date;
   now?: Date;
+  /** List only. Default false */
+  dryRun?: boolean;
 };
 
 /**
@@ -139,7 +141,7 @@ export type ExpireOptions = {
  */
 export const expire = async (
   store: MaintainedStore,
-  { keep, ref = "refs/heads/main", since, now = new Date() }: ExpireOptions,
+  { keep, ref = "refs/heads/main", since, now = new Date(), dryRun = false }: ExpireOptions,
 ): Promise<string[]> => {
   if (keep < 1) throw new RangeError(`keep must be at least 1, got ${keep}`);
   const newest = await resolve(store, ref).catch(() => null);
@@ -151,7 +153,7 @@ export const expire = async (
     if (current === null) return [];
     const recent = since !== undefined && new Date(current.created_at) >= since;
     const expired = position >= keep && !recent && !kept.has(id);
-    if (expired) await expireOne(store, id, now);
+    if (expired && !dryRun) await expireOne(store, id, now);
     // A parent in any other form is not followed: the ID becomes part of a path
     const parent = current.parents[0];
     const rest = await walk(isVersionId(parent) ? parent : undefined, position + 1);

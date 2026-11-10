@@ -173,4 +173,32 @@ describe("collect", () => {
     await store.delete([`versions/${await resolve(store)}/files.json`]);
     await expect(collect(store, { graceMs: DAY, now: NOW })).rejects.toThrow(/no files.json/);
   });
+
+  it("refuses a live version whose files.json path leaves its folder", async () => {
+    const store = await memory();
+    const key = `versions/${await resolve(store)}/version.json`;
+    const record = JSON.parse(store.objects.get(key)!.body);
+    await store.put(
+      key,
+      JSON.stringify({ ...record, files: { ...record.files, path: "../x.json" } }),
+    );
+    await expect(collect(store, { graceMs: DAY, now: NOW })).rejects.toThrow(/outside/);
+  });
+
+  it("skips a version folder whose name is not a version ID", async () => {
+    const store = await memory();
+    await store.put("versions/not-an-id/version.json", "{}");
+    await expect(collect(store, { graceMs: DAY, now: NOW })).resolves.toBeDefined();
+  });
+});
+
+describe("expire with a malformed parent", () => {
+  it("does not follow a parent that is not a version ID", async () => {
+    const store = await memory();
+    const head = await resolve(store);
+    const key = `versions/${head}/version.json`;
+    const record = JSON.parse(store.objects.get(key)!.body);
+    await store.put(key, JSON.stringify({ ...record, parents: ["../../refs/heads/main"] }));
+    expect(await expire(store, { keep: 1, now: NOW })).toEqual([]);
+  });
 });

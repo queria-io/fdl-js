@@ -2,7 +2,8 @@ name: Release
 
 # Every push to main is checked, and published when its commits call for a
 # release: semantic-release reads the Conventional Commits since the last tag
-# (fix -> patch, feat -> minor, a breaking change -> minor while below 1.0),
+# (fix -> patch, feat -> minor, a breaking change, `!` or a BREAKING CHANGE
+# footer -> minor; going to 1.0 needs a change to the release rules),
 # publishes that version to npm, tags it v<version> and makes a GitHub release.
 # The version in package.json is not kept in the repository; the tags are.
 # npm authorizes this workflow by trusted publishing (OIDC), so no token is
@@ -33,11 +34,12 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm typecheck
       - run: pnpm test
-      - run: npx --yes semantic-release@25.0.9
+      # The conventionalcommits preset reads `!` in the header as a breaking
+      # change; the default angular preset does not parse such headers at all.
+      - run: npx --yes -p semantic-release@25.0.9 -p conventional-changelog-conventionalcommits@9.3.1 semantic-release
         env:
           GITHUB_TOKEN: ${{ github.token }}

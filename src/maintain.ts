@@ -2,7 +2,7 @@
 // take older versions out of retention (as `fdl expire` does) and delete the data files no
 // live version reaches once past the grace period (as `fdl gc` does). Catalogs are never
 // opened: what a version reads comes from its files.json
-import { FdlError, readConfig, resolve } from "./repo.js";
+import { FdlError, isFileName, isVersionId, readConfig, resolve } from "./repo.js";
 import { type R2Like, type Store, r2Store, retryOnce } from "./store.js";
 
 /** A listed object: its key and when it was written */
@@ -67,7 +67,14 @@ export const r2MaintainedStore = (
   };
 };
 
-type Head = { id: string; parents: string[]; created_at: string; files?: { path: string } };
+type Head = {
+  id: string;
+  parents: string[];
+  created_at: string;
+  files?: { path: string };
+  tree?: { path: string };
+  dataset?: { path: string };
+};
 
 const record = async (store: Store, id: string): Promise<Head | null> => {
   const text = await store.text(`versions/${id}/version.json`);
@@ -122,6 +129,8 @@ export type ExpireOptions = {
   /** Also keep the versions created at or after this time */
   since?: Date;
   now?: Date;
+  /** List only. Default false */
+  dryRun?: boolean;
 };
 
 /**
@@ -132,7 +141,7 @@ export type ExpireOptions = {
  */
 export const expire = async (
   store: MaintainedStore,
-  { keep, ref = "refs/heads/main", since, now = new Date() }: ExpireOptions,
+  { keep, ref = "refs/heads/main", since, now = new Date(), dryRun = false }: ExpireOptions,
 ): Promise<string[]> => {
   if (keep < 1) throw new RangeError(`keep must be at least 1, got ${keep}`);
   const newest = await resolve(store, ref).catch(() => null);
@@ -144,8 +153,10 @@ export const expire = async (
     if (current === null) return [];
     const recent = since !== undefined && new Date(current.created_at) >= since;
     const expired = position >= keep && !recent && !kept.has(id);
-    if (expired) await expireOne(store, id, now);
-    const rest = await walk(current.parents[0], position + 1);
+    if (expired && !dryRun) await expireOne(store, id, now);
+    // A parent in any other form is not followed: the ID becomes part of a path
+    const parent = current.parents[0];
+    const rest = await walk(isVersionId(parent) ? parent : undefined, position + 1);
     return expired ? [id, ...rest] : rest;
   };
   return walk(newest, 0);
@@ -165,10 +176,15 @@ const DATA_FILE = /(^|\/)ducklake-[^/]+\.parquet$/;
 const reachedBy = async (store: Store, dataDir: string, id: string) => {
   const dir = `versions/${id}/`;
   const current = await record(store, id);
+  const name = (path: string | undefined, fallback: string) => {
+    const value = path ?? fallback;
+    if (!isFileName(value)) throw new FdlError(`version ${id} names a file outside it: ${value}`);
+    return dir + value;
+  };
   const [files, described, tree] = await Promise.all([
-    store.text(dir + (current?.files?.path ?? "files.json")),
-    store.text(`${dir}dataset.json`),
-    store.text(`${dir}tree.json`),
+    store.text(name(current?.files?.path, "files.json")),
+    store.text(name(current?.dataset?.path, "dataset.json")),
+    store.text(name(current?.tree?.path, "tree.json")),
   ]);
   if (files === null)
     throw new Error(`version ${id} is live but has no files.json to say what it reads`);
@@ -193,7 +209,7 @@ const liveVersions = async (store: MaintainedStore): Promise<string[]> => {
   const keys = new Set((await store.list("versions/")).map((p) => p.key));
   return [...keys]
     .map((key) => key.match(/^versions\/([^/]+)\/version\.json$/)?.[1])
-    .filter((id): id is string => id !== undefined && !keys.has(`versions/${id}/expired.json`));
+    .filter((id): id is string => isVersionId(id) && !keys.has(`versions/${id}/expired.json`));
 };
 
 export type CollectOptions = {

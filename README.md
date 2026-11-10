@@ -53,7 +53,7 @@ await expire(store, { keep: 7 });
 await collect(store, { graceMs: 86_400_000 });
 ```
 
-`collect` takes `{ dryRun: true }` to list the keys without deleting them. Any store with `list` (keys and when they were written), `put` and `delete` works.
+`expire` and `collect` take `{ dryRun: true }` to list the versions or keys without changing anything. Any store with `list` (keys and when they were written), `put` and `delete` works.
 
 ## What it follows
 

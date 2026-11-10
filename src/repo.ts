@@ -38,7 +38,20 @@ export type Version = { config: Config; record: VersionRecord; files: FileList }
 /** A data file to read: its key in the store, rows and sizes from files.json */
 export type DataFile = { key: string; rows: number; bytes: number; footerBytes?: number };
 
-const VERSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const VERSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** Whether a value is a version ID: a lower-case UUIDv7 */
+export const isVersionId = (value: unknown): value is string =>
+  typeof value === "string" && VERSION_ID.test(value);
+
+/** Whether a path in version.json is a plain file name in the version's folder */
+export const isFileName = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value !== "" &&
+  value !== "." &&
+  value !== ".." &&
+  !value.includes("/") &&
+  !value.includes("\\");
 
 const required = async (store: Store, key: string): Promise<string> => {
   const text = await store.text(key);
@@ -124,7 +137,7 @@ export const readVersion = async (store: Store, id: string, config?: Config): Pr
   if (record.id !== id) throw new FdlError(`${dir}version.json holds ${record.id}`);
   checkMajor(String(record.fdl), `version ${id}`);
   const filesPath = record.files?.path ?? "files.json";
-  if (!safe(filesPath))
+  if (!isFileName(filesPath))
     throw new FdlError(`version ${id} names files.json outside it: ${filesPath}`);
   const files = await store.text(dir + filesPath);
   if (files === null) throw new FdlError(`version ${id} has no files.json; read it with DuckDB`);

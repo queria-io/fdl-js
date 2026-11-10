@@ -43,6 +43,18 @@ Each retries a failed request once. A store is three functions (`text`, `size`, 
 - Refs move. `refreshing(() => open(store), 5 * 60_000)` keeps the version for five minutes and keeps the last one when a ref cannot be read for a moment. Pass `{ onError }` to see those failures
 - Data files never change, so their footers can be kept forever: pass `{ cache: cacheApiFooterCache(caches.default) }` (Workers) or `memoryFooterCache()` to `openParquet`. With `footer_bytes` in `files.json`, an uncached footer is one read
 
+## Retention
+
+For the host of a repository: `expire(store, { keep })` takes the versions behind the newest `keep` out of retention, as `fdl expire` does, and `collect(store, { graceMs })` deletes the data files no live version reaches once past the grace period, as `fdl gc` does. Both read `files.json` and never open a catalog. Assets are deleted only while no live version's rows hold assets.
+
+```ts
+const store = r2MaintainedStore(env.BUCKET, "towns/", r2Store(env.BUCKET, "towns/"));
+await expire(store, { keep: 7 });
+await collect(store, { graceMs: 86_400_000 });
+```
+
+`collect` takes `{ dryRun: true }` to list the keys without deleting them. Any store with `list` (keys and when they were written), `put` and `delete` works.
+
 ## What it follows
 
 [Reading](https://fdl.queria.io/spec/reading) in the specification: `HEAD` and refs are followed, `version.json` must name its own ID and a known `fdl` major version, a version with `expired.json` is refused, and file paths from `files.json` are read under `data_dir`. A version without `files.json` cannot be read with this library.

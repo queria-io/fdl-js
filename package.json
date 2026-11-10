@@ -1,6 +1,6 @@
 {
   "name": "@queria-io/fdl-js",
-  "version": "0.3.0",
+  "version": "0.0.0-semantic-release",
   "description": "Read DuckLake tables published as FDL repositories, without DuckDB: resolve refs, list a version's files and read Parquet by range",
   "keywords": [
     "cloudflare-workers",
@@ -53,6 +53,34 @@
     "oxlint": "^1.76.0",
     "typescript": "^5.7.4",
     "vitest": "^4.1.0"
+  },
+  "release": {
+    "branches": [
+      "main"
+    ],
+    "plugins": [
+      [
+        "@semantic-release/commit-analyzer",
+        {
+          "releaseRules": [
+            {
+              "breaking": true,
+              "release": "minor"
+            }
+          ]
+        }
+      ],
+      "@semantic-release/release-notes-generator",
+      "@semantic-release/npm",
+      [
+        "@semantic-release/github",
+        {
+          "successComment": false,
+          "failComment": false,
+          "releasedLabels": false
+        }
+      ]
+    ]
   },
   "engines": {
     "node": ">=20"

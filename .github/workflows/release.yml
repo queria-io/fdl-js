@@ -1,25 +1,33 @@
 name: Release
 
-# Publishes the version in package.json to npm, then tags it v<version> and
-# makes a GitHub release. Run it from the Actions tab (or the API) after the
-# version bump is merged; pushing a tag v<version> by hand also runs it.
+# Every push to main is checked, and published when its commits call for a
+# release: semantic-release reads the Conventional Commits since the last tag
+# (fix -> patch, feat -> minor, a breaking change -> minor while below 1.0),
+# publishes that version to npm, tags it v<version> and makes a GitHub release.
+# The version in package.json is not kept in the repository; the tags are.
 # npm authorizes this workflow by trusted publishing (OIDC), so no token is
 # stored here.
 
 on:
-  workflow_dispatch:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -27,27 +35,9 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - name: Read the version
-        id: version
-        run: echo "tag=v$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
-      - name: Check the tag
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            test "$TAG" = "$GITHUB_REF_NAME"
-          elif git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
-            echo "$TAG is already released; bump the version in package.json" >&2
-            exit 1
-          fi
       - run: pnpm check
       - run: pnpm typecheck
       - run: pnpm test
-      - run: npm publish --provenance --access public
-      - name: Tag and make a GitHub release
+      - run: npx --yes semantic-release@25.0.9
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then exit 0; fi
-          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+          GITHUB_TOKEN: ${{ github.token }}

@@ -2,7 +2,7 @@
 
 Read DuckLake tables published as [FDL](https://fdl.queria.io) repositories from JavaScript, without DuckDB: resolve a ref to a version, list the data files of its tables from `files.json`, and read the Parquet files by range with [hyparquet](https://github.com/hyparam/hyparquet). It runs in Cloudflare Workers, browsers and Node.
 
-It reads; it does not write. It reads only tables whose files can be read as they are: a table with deleted rows or renamed columns is refused, since reading its Parquet files without the catalog would return deleted rows or miss columns. Read those with DuckDB.
+Reading never writes to the store; only the [retention](#retention) functions for a repository's host do. It reads only tables whose files can be read as they are: a table with deleted rows or renamed columns is refused, since reading its Parquet files without the catalog would return deleted rows or miss columns. Read those with DuckDB.
 
 ## Install
 
@@ -48,7 +48,7 @@ Each retries a failed request once. A store is three functions (`text`, `size`, 
 For the host of a repository: `expire(store, { keep })` takes the versions behind the newest `keep` out of retention, as `fdl expire` does, and `collect(store, { graceMs })` deletes the data files no live version reaches once past the grace period, as `fdl gc` does. Both read `files.json` and never open a catalog. Assets are deleted only while no live version's rows hold assets.
 
 ```ts
-const store = r2MaintainedStore(env.BUCKET, "towns/", r2Store(env.BUCKET, "towns/"));
+const store = r2MaintainedStore(env.BUCKET, "towns/");
 await expire(store, { keep: 7 });
 await collect(store, { graceMs: 86_400_000 });
 ```

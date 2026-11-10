@@ -2,8 +2,8 @@
 // take older versions out of retention (as `fdl expire` does) and delete the data files no
 // live version reaches once past the grace period (as `fdl gc` does). Catalogs are never
 // opened: what a version reads comes from its files.json
-import { readConfig, resolve } from "./repo.js";
-import { type R2Like, type Store, retryOnce } from "./store.js";
+import { FdlError, readConfig, resolve } from "./repo.js";
+import { type R2Like, type Store, r2Store, retryOnce } from "./store.js";
 
 /** A listed object: its key and when it was written */
 export type Placed = { key: string; uploaded: Date };
@@ -34,23 +34,29 @@ const chunks = <T>(items: T[], size: number): T[][] =>
     items.slice(i * size, (i + 1) * size),
   );
 
-/** A repository in an R2 bucket that maintenance may change */
+/**
+ * A repository in an R2 bucket that maintenance may change. Reads go through `reader`, which
+ * defaults to `r2Store(bucket, prefix)`; pass another one (with a cache, say) for the same place
+ */
 export const r2MaintainedStore = (
   bucket: R2Writable,
   prefix: string,
-  reader: Store,
+  reader: Store = r2Store(bucket, prefix),
 ): MaintainedStore => {
-  const page = async (key: string, cursor?: string): Promise<Placed[]> => {
-    const found = await retryOnce(() => bucket.list({ prefix: prefix + key, cursor }));
-    const here = found.objects.map((o) => ({
-      key: o.key.slice(prefix.length),
-      uploaded: o.uploaded,
-    }));
-    return found.truncated ? [...here, ...(await page(key, found.cursor))] : here;
+  const list = async (key: string): Promise<Placed[]> => {
+    const placed: Placed[] = [];
+    let cursor: string | undefined;
+    for (;;) {
+      const found = await retryOnce(() => bucket.list({ prefix: prefix + key, cursor }));
+      for (const o of found.objects)
+        placed.push({ key: o.key.slice(prefix.length), uploaded: o.uploaded });
+      if (!found.truncated) return placed;
+      cursor = found.cursor;
+    }
   };
   return {
     ...reader,
-    list: (key) => page(key),
+    list,
     put: async (key, text) => {
       await retryOnce(() => bucket.put(prefix + key, text));
     },
@@ -71,10 +77,20 @@ const record = async (store: Store, id: string): Promise<Head | null> => {
 const isExpired = async (store: Store, id: string) =>
   (await store.text(`versions/${id}/expired.json`)) !== null;
 
-/** The versions some ref points at */
+/**
+ * The versions some ref points at. A ref that does not hold a version ID is skipped; a failed
+ * read is not, since a version a ref points at must not be taken out
+ */
 const held = async (store: MaintainedStore): Promise<Set<string>> => {
   const keys = (await store.list("refs/")).map((p) => p.key);
-  const targets = await Promise.all(keys.map((key) => resolve(store, key).catch(() => null)));
+  const targets = await Promise.all(
+    keys.map((key) =>
+      resolve(store, key).catch((e: unknown) => {
+        if (e instanceof FdlError) return null;
+        throw e;
+      }),
+    ),
+  );
   return new Set(targets.filter((id): id is string => id !== null));
 };
 
@@ -103,17 +119,20 @@ export type ExpireOptions = {
   /** How many of the newest versions on the ref's first-parent line to keep (at least 1) */
   keep: number;
   ref?: string;
+  /** Also keep the versions created at or after this time */
+  since?: Date;
   now?: Date;
 };
 
 /**
  * Takes the versions behind the newest `keep` on the ref's first-parent line out of retention,
- * as `fdl expire` does. Versions a ref points at are kept. Stops at the first version already
+ * as `fdl expire` does. Versions a ref points at, and with `since` those created at or after
+ * it, are kept. Stops at the first version already
  * expired. Returns the IDs expired, newest first
  */
 export const expire = async (
   store: MaintainedStore,
-  { keep, ref = "refs/heads/main", now = new Date() }: ExpireOptions,
+  { keep, ref = "refs/heads/main", since, now = new Date() }: ExpireOptions,
 ): Promise<string[]> => {
   if (keep < 1) throw new RangeError(`keep must be at least 1, got ${keep}`);
   const newest = await resolve(store, ref).catch(() => null);
@@ -123,7 +142,8 @@ export const expire = async (
     if (id === undefined || (position > 0 && (await isExpired(store, id)))) return [];
     const current = await record(store, id);
     if (current === null) return [];
-    const expired = position >= keep && !kept.has(id);
+    const recent = since !== undefined && new Date(current.created_at) >= since;
+    const expired = position >= keep && !recent && !kept.has(id);
     if (expired) await expireOne(store, id, now);
     const rest = await walk(current.parents[0], position + 1);
     return expired ? [id, ...rest] : rest;
@@ -134,10 +154,12 @@ export const expire = async (
 type FileList = {
   tables: { [table: string]: { files: { path: string; deletes?: { path: string } }[] } };
 };
-type Described = { tables?: { columns?: { asset?: boolean }[] }[] };
+type Described = { tables?: { kind?: string; fields?: { asset?: boolean }[] }[] };
 type Tree = { entries: { sha256: string }[] };
 
 const SHA256 = /^assets\/[0-9a-f]{64}$/;
+/** A data or delete file as DuckLake names it, under data_dir */
+const DATA_FILE = /(^|\/)ducklake-[^/]+\.parquet$/;
 
 /** What a live version reaches: its data files, its tree's assets, and whether rows hold assets */
 const reachedBy = async (store: Store, dataDir: string, id: string) => {
@@ -154,16 +176,24 @@ const reachedBy = async (store: Store, dataDir: string, id: string) => {
   const data = Object.values(list.tables).flatMap((t) =>
     t.files.flatMap((f) => [f.path, ...(f.deletes ? [f.deletes.path] : [])]),
   );
-  const columns = ((described ? (JSON.parse(described) as Described) : {}).tables ?? []).flatMap(
-    (t) => t.columns ?? [],
-  );
+  const fields = ((described ? (JSON.parse(described) as Described) : {}).tables ?? [])
+    .filter((t) => t.kind !== "view")
+    .flatMap((t) => t.fields ?? []);
   return {
     keys: [
       ...data.map((path) => dataDir + path),
       ...(tree ? (JSON.parse(tree) as Tree).entries.map((e) => `assets/${e.sha256}`) : []),
     ],
-    assetRows: columns.some((c) => c.asset === true),
+    assetRows: fields.some((f) => f.asset === true),
   };
+};
+
+/** The versions without expired.json, from one listing of versions/ */
+const liveVersions = async (store: MaintainedStore): Promise<string[]> => {
+  const keys = new Set((await store.list("versions/")).map((p) => p.key));
+  return [...keys]
+    .map((key) => key.match(/^versions\/([^/]+)\/version\.json$/)?.[1])
+    .filter((id): id is string => id !== undefined && !keys.has(`versions/${id}/expired.json`));
 };
 
 export type CollectOptions = {
@@ -179,7 +209,8 @@ export type CollectOptions = {
  * period, as `fdl gc` does. These are files only expired versions reached, and files working
  * catalogs wrote and never pushed. Assets are kept while a live version's rows hold assets,
  * since reading those rows needs the catalog. The objects are listed before the versions are
- * read, so a version pushed meanwhile keeps what it reaches. Returns the keys deleted
+ * read, and the versions are listed again just before deleting, so a version pushed meanwhile
+ * keeps what it reaches. Returns the keys deleted
  */
 export const collect = async (
   store: MaintainedStore,
@@ -188,21 +219,27 @@ export const collect = async (
   const { data_dir: dataDir } = await readConfig(store);
   const before = now.getTime() - graceMs;
   const [data, assets] = await Promise.all([store.list(dataDir), store.list("assets/")]);
-  const ids = (await store.list("versions/"))
-    .map((p) => p.key.match(/^versions\/([^/]+)\/version\.json$/)?.[1])
-    .filter((id): id is string => id !== undefined);
-  const live = (
-    await Promise.all(ids.map(async (id) => ((await isExpired(store, id)) ? null : id)))
-  ).filter((id): id is string => id !== null);
-  const reached = await Promise.all(live.map((id) => reachedBy(store, dataDir, id)));
-  const kept = new Set(reached.flatMap((r) => r.keys));
-  const assetRows = reached.some((r) => r.assetRows);
+  const kept = new Set<string>();
+  let assetRows = false;
+  const keep = async (ids: string[]) => {
+    for (const r of await Promise.all(ids.map((id) => reachedBy(store, dataDir, id)))) {
+      for (const key of r.keys) kept.add(key);
+      assetRows ||= r.assetRows;
+    }
+  };
+  const read = await liveVersions(store);
+  await keep(read);
   const old = (placed: Placed[]) =>
     placed.filter((p) => p.uploaded.getTime() < before && !kept.has(p.key)).map((p) => p.key);
-  const deleted = [
-    ...old(data),
-    ...(assetRows ? [] : old(assets).filter((key) => SHA256.test(key))),
-  ].sort();
-  if (!dryRun) await store.delete(deleted);
+  const planned = () =>
+    [
+      ...old(data).filter((key) => DATA_FILE.test(key.slice(dataDir.length))),
+      ...(assetRows ? [] : old(assets).filter((key) => SHA256.test(key))),
+    ].sort();
+  if (dryRun) return planned();
+  const seen = new Set(read);
+  await keep((await liveVersions(store)).filter((id) => !seen.has(id)));
+  const deleted = planned();
+  await store.delete(deleted);
   return deleted;
 };

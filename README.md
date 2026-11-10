@@ -1,6 +1,6 @@
 # fdl-js
 
-Read DuckLake tables published as [FDL](https://fdl.flo8s.com) repositories from JavaScript, without DuckDB: resolve a ref to a version, list the data files of its tables from `files.json`, and read the Parquet files by range with [hyparquet](https://github.com/hyparam/hyparquet). It runs in Cloudflare Workers, browsers and Node.
+Read DuckLake tables published as [FDL](https://fdl.queria.io) repositories from JavaScript, without DuckDB: resolve a ref to a version, list the data files of its tables from `files.json`, and read the Parquet files by range with [hyparquet](https://github.com/hyparam/hyparquet). It runs in Cloudflare Workers, browsers and Node.
 
 It reads; it does not write. It reads only tables whose files can be read as they are: a table with deleted rows or renamed columns is refused, since reading its Parquet files without the catalog would return deleted rows or miss columns. Read those with DuckDB.
 
@@ -45,7 +45,7 @@ Each retries a failed request once. A store is three functions (`text`, `size`, 
 
 ## What it follows
 
-[Reading](https://fdl.flo8s.com/spec/reading) in the specification: `HEAD` and refs are followed, `version.json` must name its own ID and a known `fdl` major version, a version with `expired.json` is refused, and file paths from `files.json` are read under `data_dir`. A version without `files.json` cannot be read with this library.
+[Reading](https://fdl.queria.io/spec/reading) in the specification: `HEAD` and refs are followed, `version.json` must name its own ID and a known `fdl` major version, a version with `expired.json` is refused, and file paths from `files.json` are read under `data_dir`. A version without `files.json` cannot be read with this library.
 
 ## Develop
 

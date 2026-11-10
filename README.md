@@ -69,6 +69,6 @@ pnpm check
 pnpm build       # dist/
 ```
 
-Releases are made from the commit messages ([Conventional Commits](https://www.conventionalcommits.org/)). Each push to `main` runs the Release workflow: when the commits since the last tag include a `fix:` it publishes a patch version, a `feat:` a minor one, and a breaking change (`!`) a minor one while the version is below 1.0. It publishes to npm, tags the commit `v<version>` and makes a GitHub release. `docs:`, `chore:`, `test:` and the like release nothing.
+Releases are made from the commit messages ([Conventional Commits](https://www.conventionalcommits.org/)). Each push to `main` runs the Release workflow: when the commits since the last tag include a `fix:` it publishes a patch version, a `feat:` a minor one, and a breaking change (`!` after the type, or a `BREAKING CHANGE:` footer) a minor one. It publishes to npm, tags the commit `v<version>` and makes a GitHub release. `docs:`, `chore:`, `test:` and the like release nothing.
 
 `test/fixture/repo` is a small repository made by the `fdl` command: `FDL=fdl test/make-fixture.sh` remakes it.

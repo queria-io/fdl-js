@@ -1,7 +1,7 @@
 // Retention for a repository's host, following https://fdl.queria.io/spec/data-files:
 // take older versions out of retention (as `fdl expire` does) and delete the data files no
 // live version reaches once past the grace period (as `fdl gc` does). Catalogs are never
-// opened: what a version reads comes from its files.json
+// opened: what a version reaches comes from `named` in its files.json
 import { FdlError, isFileName, isVersionId, readConfig, resolve } from "./repo.js";
 import { type R2Like, type Store, r2Store, retryOnce } from "./store.js";
 
@@ -164,6 +164,8 @@ export const expire = async (
 
 type FileList = {
   tables: { [table: string]: { files: { path: string; deletes?: { path: string } }[] } };
+  /** Every data file the catalog names, at any snapshot. Absent in files.json written before it */
+  named?: string[];
 };
 type Described = { tables?: { kind?: string; fields?: { asset?: boolean }[] }[] };
 type Tree = { entries: { sha256: string }[] };
@@ -172,7 +174,11 @@ const SHA256 = /^assets\/[0-9a-f]{64}$/;
 /** A data or delete file as DuckLake names it, under data_dir */
 const DATA_FILE = /(^|\/)ducklake-[^/]+\.parquet$/;
 
-/** What a live version reaches: its data files, its tree's assets, and whether rows hold assets */
+/**
+ * What a live version reaches: the data files its catalog names, its tree's assets, whether rows
+ * hold assets, and whether files.json names every data file (`named`). Without `named`, the
+ * files in `tables` are only those at the version's snapshot, and the catalog may name more
+ */
 const reachedBy = async (store: Store, dataDir: string, id: string) => {
   const dir = `versions/${id}/`;
   const current = await record(store, id);
@@ -189,9 +195,12 @@ const reachedBy = async (store: Store, dataDir: string, id: string) => {
   if (files === null)
     throw new Error(`version ${id} is live but has no files.json to say what it reads`);
   const list = JSON.parse(files) as FileList;
-  const data = Object.values(list.tables).flatMap((t) =>
-    t.files.flatMap((f) => [f.path, ...(f.deletes ? [f.deletes.path] : [])]),
-  );
+  const data = [
+    ...(list.named ?? []),
+    ...Object.values(list.tables).flatMap((t) =>
+      t.files.flatMap((f) => [f.path, ...(f.deletes ? [f.deletes.path] : [])]),
+    ),
+  ];
   const fields = ((described ? (JSON.parse(described) as Described) : {}).tables ?? [])
     .filter((t) => t.kind !== "view")
     .flatMap((t) => t.fields ?? []);
@@ -201,6 +210,7 @@ const reachedBy = async (store: Store, dataDir: string, id: string) => {
       ...(tree ? (JSON.parse(tree) as Tree).entries.map((e) => `assets/${e.sha256}`) : []),
     ],
     assetRows: fields.some((f) => f.asset === true),
+    named: list.named !== undefined,
   };
 };
 
@@ -223,7 +233,9 @@ export type CollectOptions = {
 /**
  * Deletes the data files and assets no live version reaches, written longer ago than the grace
  * period, as `fdl gc` does. These are files only expired versions reached, and files working
- * catalogs wrote and never pushed. Assets are kept while a live version's rows hold assets,
+ * catalogs wrote and never pushed. A version reaches every data file its catalog names, listed
+ * in `named` of its files.json; while a live version's files.json lacks `named`, no data file is
+ * deleted. Assets are kept while a live version's rows hold assets,
  * since reading those rows needs the catalog. The objects are listed before the versions are
  * read, and the versions are listed again just before deleting, so a version pushed meanwhile
  * keeps what it reaches. Returns the keys deleted
@@ -237,10 +249,12 @@ export const collect = async (
   const [data, assets] = await Promise.all([store.list(dataDir), store.list("assets/")]);
   const kept = new Set<string>();
   let assetRows = false;
+  let unnamed = false;
   const keep = async (ids: string[]) => {
     for (const r of await Promise.all(ids.map((id) => reachedBy(store, dataDir, id)))) {
       for (const key of r.keys) kept.add(key);
       assetRows ||= r.assetRows;
+      unnamed ||= !r.named;
     }
   };
   const read = await liveVersions(store);
@@ -249,7 +263,8 @@ export const collect = async (
     placed.filter((p) => p.uploaded.getTime() < before && !kept.has(p.key)).map((p) => p.key);
   const planned = () =>
     [
-      ...old(data).filter((key) => DATA_FILE.test(key.slice(dataDir.length))),
+      // A live version whose files.json lacks `named` may reach data files no files.json lists
+      ...(unnamed ? [] : old(data).filter((key) => DATA_FILE.test(key.slice(dataDir.length)))),
       ...(assetRows ? [] : old(assets).filter((key) => SHA256.test(key))),
     ].sort();
   if (dryRun) return planned();

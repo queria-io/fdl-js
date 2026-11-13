@@ -51,6 +51,20 @@ const dataKeys = async (store: MaintainedStore, id: string) => {
   );
 };
 
+// files.json as fdl writes it now: `named` lists every data file the catalog names. The fixture
+// was written before `named`, so its catalogs name only the files in `tables`
+const withNamed = (store: Awaited<ReturnType<typeof memory>>) => {
+  for (const [key, o] of store.objects) {
+    if (!key.endsWith("/files.json")) continue;
+    const list = JSON.parse(o.body);
+    const named = Object.values(
+      list.tables as Record<string, { files: { path: string; deletes?: { path: string } }[] }>,
+    ).flatMap((t) => t.files.flatMap((f) => [f.path, ...(f.deletes ? [f.deletes.path] : [])]));
+    o.body = JSON.stringify({ ...list, named });
+  }
+  return store;
+};
+
 describe("expire", () => {
   it("takes the versions behind the newest out of retention", async () => {
     const store = await memory();
@@ -101,7 +115,7 @@ describe("expire", () => {
 
 describe("collect", () => {
   it("deletes what no live version reaches, once past the grace period", async () => {
-    const store = await memory();
+    const store = withNamed(await memory());
     const head = await resolve(store);
     const live = new Set(await dataKeys(store, head));
     store.objects.set("data/main/towns/ducklake-unpushed.parquet", {
@@ -165,6 +179,26 @@ describe("collect", () => {
       }
       return text(key);
     };
+    expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(file);
+    expect(store.objects.has(file)).toBe(true);
+  });
+
+  it("keeps a data file only an older snapshot of a live version's catalog names", async () => {
+    const store = withNamed(await memory());
+    const head = await resolve(store);
+    const file = "main/towns/ducklake-older-snapshot.parquet";
+    store.objects.set(`data/${file}`, { key: `data/${file}`, uploaded: OLD, body: "" });
+    const o = store.objects.get(`versions/${head}/files.json`)!;
+    const list = JSON.parse(o.body);
+    o.body = JSON.stringify({ ...list, named: [...list.named, file] });
+    expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(`data/${file}`);
+    expect(store.objects.has(`data/${file}`)).toBe(true);
+  });
+
+  it("deletes no data file while a live version's files.json lacks named", async () => {
+    const store = await memory();
+    const file = "data/main/towns/ducklake-unpushed.parquet";
+    store.objects.set(file, { key: file, uploaded: OLD, body: "" });
     expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(file);
     expect(store.objects.has(file)).toBe(true);
   });

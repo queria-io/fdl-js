@@ -1,0 +1,408 @@
+{
+  "now": "2026-11-12T00:00:00Z",
+  "grace_seconds": 86400,
+  "cases": [
+    {
+      "name": "keeps every data file named, not only those at the snapshot",
+      "files": {
+        "fdl.json": {
+          "fdl": "0.1",
+          "data_dir": "data/"
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/version.json": {
+          "fdl": "0.1",
+          "id": "019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c",
+          "seq": 1,
+          "parents": [],
+          "created_at": "2026-11-01T00:00:00Z",
+          "author": {
+            "name": "example"
+          },
+          "message": "",
+          "catalog": {
+            "path": "ducklake.duckdb",
+            "storage": "duckdb-v1.5.0",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "ducklake": {
+            "format": "1.0",
+            "snapshot_id": 1,
+            "snapshots": [1]
+          },
+          "files": {
+            "path": "files.json",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/files.json": {
+          "tables": {
+            "main.t": {
+              "files": [
+                {
+                  "path": "main/t/ducklake-a.parquet",
+                  "rows": 1,
+                  "bytes": 1
+                }
+              ]
+            }
+          },
+          "named": [
+            "main/t/ducklake-a.parquet",
+            "main/t/ducklake-b.parquet",
+            "main/t/ducklake-b-delete.parquet"
+          ]
+        }
+      },
+      "objects": {
+        "data/main/t/ducklake-a.parquet": "2026-11-01T00:00:00Z",
+        "data/main/t/ducklake-b.parquet": "2026-11-01T00:00:00Z",
+        "data/main/t/ducklake-b-delete.parquet": "2026-11-01T00:00:00Z",
+        "data/main/t/ducklake-c.parquet": "2026-11-01T00:00:00Z"
+      },
+      "deleted": ["data/main/t/ducklake-c.parquet"]
+    },
+    {
+      "name": "keeps what was placed within the grace period",
+      "files": {
+        "fdl.json": {
+          "fdl": "0.1",
+          "data_dir": "data/"
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/version.json": {
+          "fdl": "0.1",
+          "id": "019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c",
+          "seq": 1,
+          "parents": [],
+          "created_at": "2026-11-01T00:00:00Z",
+          "author": {
+            "name": "example"
+          },
+          "message": "",
+          "catalog": {
+            "path": "ducklake.duckdb",
+            "storage": "duckdb-v1.5.0",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "ducklake": {
+            "format": "1.0",
+            "snapshot_id": 1,
+            "snapshots": [1]
+          },
+          "files": {
+            "path": "files.json",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/files.json": {
+          "tables": {
+            "main.t": {
+              "files": [
+                {
+                  "path": "main/t/ducklake-a.parquet",
+                  "rows": 1,
+                  "bytes": 1
+                }
+              ]
+            }
+          },
+          "named": ["main/t/ducklake-a.parquet"]
+        }
+      },
+      "objects": {
+        "data/main/t/ducklake-a.parquet": "2026-11-01T00:00:00Z",
+        "data/main/t/ducklake-b.parquet": "2026-11-11T12:00:00Z",
+        "data/main/t/ducklake-c.parquet": "2026-11-01T00:00:00Z"
+      },
+      "deleted": ["data/main/t/ducklake-c.parquet"]
+    },
+    {
+      "name": "deletes what only a version past retention reached",
+      "files": {
+        "fdl.json": {
+          "fdl": "0.1",
+          "data_dir": "data/"
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/version.json": {
+          "fdl": "0.1",
+          "id": "019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c",
+          "seq": 1,
+          "parents": [],
+          "created_at": "2026-11-01T00:00:00Z",
+          "author": {
+            "name": "example"
+          },
+          "message": "",
+          "catalog": {
+            "path": "ducklake.duckdb",
+            "storage": "duckdb-v1.5.0",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "ducklake": {
+            "format": "1.0",
+            "snapshot_id": 1,
+            "snapshots": [1]
+          }
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/expired.json": {
+          "expired_at": "2026-11-01T00:00:00Z",
+          "reason": "retention"
+        },
+        "versions/019a3d00-1111-7aaa-8bbb-2f0d8e1a4b6c/version.json": {
+          "fdl": "0.1",
+          "id": "019a3d00-1111-7aaa-8bbb-2f0d8e1a4b6c",
+          "seq": 2,
+          "parents": ["019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c"],
+          "created_at": "2026-11-01T00:00:00Z",
+          "author": {
+            "name": "example"
+          },
+          "message": "",
+          "catalog": {
+            "path": "ducklake.duckdb",
+            "storage": "duckdb-v1.5.0",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "ducklake": {
+            "format": "1.0",
+            "snapshot_id": 1,
+            "snapshots": [1]
+          },
+          "files": {
+            "path": "files.json",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "versions/019a3d00-1111-7aaa-8bbb-2f0d8e1a4b6c/files.json": {
+          "tables": {
+            "main.t": {
+              "files": [
+                {
+                  "path": "main/t/ducklake-b.parquet",
+                  "rows": 1,
+                  "bytes": 1
+                }
+              ]
+            }
+          },
+          "named": ["main/t/ducklake-b.parquet"]
+        }
+      },
+      "objects": {
+        "data/main/t/ducklake-a.parquet": "2026-11-01T00:00:00Z",
+        "data/main/t/ducklake-b.parquet": "2026-11-01T00:00:00Z"
+      },
+      "deleted": ["data/main/t/ducklake-a.parquet"]
+    },
+    {
+      "name": "deletes no data file while a live version's files.json has no named",
+      "files": {
+        "fdl.json": {
+          "fdl": "0.1",
+          "data_dir": "data/"
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/version.json": {
+          "fdl": "0.1",
+          "id": "019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c",
+          "seq": 1,
+          "parents": [],
+          "created_at": "2026-11-01T00:00:00Z",
+          "author": {
+            "name": "example"
+          },
+          "message": "",
+          "catalog": {
+            "path": "ducklake.duckdb",
+            "storage": "duckdb-v1.5.0",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "ducklake": {
+            "format": "1.0",
+            "snapshot_id": 1,
+            "snapshots": [1]
+          },
+          "files": {
+            "path": "files.json",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/files.json": {
+          "tables": {
+            "main.t": {
+              "files": [
+                {
+                  "path": "main/t/ducklake-a.parquet",
+                  "rows": 1,
+                  "bytes": 1
+                }
+              ]
+            }
+          }
+        }
+      },
+      "objects": {
+        "data/main/t/ducklake-a.parquet": "2026-11-01T00:00:00Z",
+        "data/main/t/ducklake-b.parquet": "2026-11-01T00:00:00Z"
+      },
+      "deleted": []
+    },
+    {
+      "name": "deletes nothing while a live version has no files.json and no catalog",
+      "files": {
+        "fdl.json": {
+          "fdl": "0.1",
+          "data_dir": "data/"
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/version.json": {
+          "fdl": "0.1",
+          "id": "019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c",
+          "seq": 1,
+          "parents": [],
+          "created_at": "2026-11-01T00:00:00Z",
+          "author": {
+            "name": "example"
+          },
+          "message": "",
+          "catalog": {
+            "path": "ducklake.duckdb",
+            "storage": "duckdb-v1.5.0",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "ducklake": {
+            "format": "1.0",
+            "snapshot_id": 1,
+            "snapshots": [1]
+          }
+        }
+      },
+      "objects": {
+        "data/main/t/ducklake-a.parquet": "2026-11-01T00:00:00Z",
+        "assets/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "2026-11-01T00:00:00Z"
+      },
+      "deleted": []
+    },
+    {
+      "name": "keeps the assets a live version's tree lists",
+      "files": {
+        "fdl.json": {
+          "fdl": "0.1",
+          "data_dir": "data/"
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/version.json": {
+          "fdl": "0.1",
+          "id": "019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c",
+          "seq": 1,
+          "parents": [],
+          "created_at": "2026-11-01T00:00:00Z",
+          "author": {
+            "name": "example"
+          },
+          "message": "",
+          "catalog": {
+            "path": "ducklake.duckdb",
+            "storage": "duckdb-v1.5.0",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "ducklake": {
+            "format": "1.0",
+            "snapshot_id": 1,
+            "snapshots": [1]
+          },
+          "files": {
+            "path": "files.json",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "tree": {
+            "path": "tree.json",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/files.json": {
+          "tables": {
+            "main.t": {
+              "files": []
+            }
+          },
+          "named": []
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/tree.json": {
+          "entries": [
+            {
+              "path": "README.md",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "bytes": 1
+            }
+          ]
+        }
+      },
+      "objects": {
+        "assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "2026-11-01T00:00:00Z",
+        "assets/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "2026-11-01T00:00:00Z"
+      },
+      "deleted": ["assets/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]
+    },
+    {
+      "name": "leaves alone what is not a shared object",
+      "files": {
+        "fdl.json": {
+          "fdl": "0.1",
+          "data_dir": "data/"
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/version.json": {
+          "fdl": "0.1",
+          "id": "019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c",
+          "seq": 1,
+          "parents": [],
+          "created_at": "2026-11-01T00:00:00Z",
+          "author": {
+            "name": "example"
+          },
+          "message": "",
+          "catalog": {
+            "path": "ducklake.duckdb",
+            "storage": "duckdb-v1.5.0",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "ducklake": {
+            "format": "1.0",
+            "snapshot_id": 1,
+            "snapshots": [1]
+          },
+          "files": {
+            "path": "files.json",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/files.json": {
+          "tables": {
+            "main.t": {
+              "files": []
+            }
+          },
+          "named": []
+        }
+      },
+      "objects": {
+        "data/main/t/other.parquet": "2026-11-01T00:00:00Z",
+        "data/notes.txt": "2026-11-01T00:00:00Z",
+        "assets/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA": "2026-11-01T00:00:00Z",
+        "assets/abc": "2026-11-01T00:00:00Z"
+      },
+      "deleted": []
+    }
+  ]
+}

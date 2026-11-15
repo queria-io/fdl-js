@@ -1,6 +1,6 @@
 // Retention for a repository's host, following https://fdl.queria.io/spec/data-files:
 // take older versions out of retention (as `fdl expire` does) and delete the data files no
-// live version reaches once past the grace period (as `fdl gc` does). Catalogs are never
+// live version reaches once past the grace period (as `fdl gc` does). Metadata files are never
 // opened: what a version reaches comes from `named` in its files.json
 import { FdlError, isFileName, isVersionId, readConfig, resolve } from "./repo.js";
 import { type R2Like, type Store, r2Store, retryOnce } from "./store.js";
@@ -74,6 +74,9 @@ type Head = {
   files?: { path: string };
   tree?: { path: string };
   dataset?: { path: string };
+  /** The metadata file. Records written by fdl 0.26 and earlier name it `catalog` */
+  metadata?: { path?: unknown };
+  catalog?: { path?: unknown };
 };
 
 const record = async (store: Store, id: string): Promise<Head | null> => {
@@ -101,9 +104,19 @@ const held = async (store: MaintainedStore): Promise<Set<string>> => {
   return new Set(targets.filter((id): id is string => id !== null));
 };
 
-/** Takes one version out of retention: the mark first, then its catalogs and indexes */
-const expireOne = async (store: MaintainedStore, id: string, now: Date) => {
+/**
+ * The metadata files to delete: the one the record names (`metadata`, or `catalog` in records
+ * written by fdl 0.26 and earlier), or both default names when the record names none it can use
+ */
+const metadataPaths = (head: Head): string[] => {
+  const path = (head.metadata ?? head.catalog)?.path;
+  return isFileName(path) ? [path] : ["metadata.db", "ducklake.duckdb"];
+};
+
+/** Takes one version out of retention: the mark first, then its metadata and indexes */
+const expireOne = async (store: MaintainedStore, id: string, head: Head, now: Date) => {
   const dir = `versions/${id}/`;
+  const metadata = new Set(metadataPaths(head).map((path) => dir + path));
   if (!(await isExpired(store, id)))
     await store.put(
       `${dir}expired.json`,
@@ -113,9 +126,11 @@ const expireOne = async (store: MaintainedStore, id: string, now: Date) => {
     .map((p) => p.key)
     .filter(
       (key) =>
-        key === `${dir}ducklake.duckdb` ||
+        metadata.has(key) ||
         key === `${dir}files.json` ||
         key === `${dir}tree.json` ||
+        key.startsWith(`${dir}metadata/`) ||
+        // Other DuckLake formats, as fdl 0.26 and earlier lay them out
         key.startsWith(`${dir}catalogs/`) ||
         key.startsWith(`${dir}profiles/`),
     );
@@ -153,7 +168,7 @@ export const expire = async (
     if (current === null) return [];
     const recent = since !== undefined && new Date(current.created_at) >= since;
     const expired = position >= keep && !recent && !kept.has(id);
-    if (expired && !dryRun) await expireOne(store, id, now);
+    if (expired && !dryRun) await expireOne(store, id, current, now);
     // A parent in any other form is not followed: the ID becomes part of a path
     const parent = current.parents[0];
     const rest = await walk(isVersionId(parent) ? parent : undefined, position + 1);
@@ -164,7 +179,7 @@ export const expire = async (
 
 type FileList = {
   tables: { [table: string]: { files: { path: string; deletes?: { path: string } }[] } };
-  /** Every data file the catalog names, at any snapshot. Absent in files.json written before it */
+  /** Every data file the metadata names, at any snapshot. Absent in files.json written before it */
   named?: string[];
 };
 type Described = { tables?: { kind?: string; fields?: { asset?: boolean }[] }[] };
@@ -175,9 +190,9 @@ const SHA256 = /^assets\/[0-9a-f]{64}$/;
 const DATA_FILE = /(^|\/)ducklake-[^/]+\.parquet$/;
 
 /**
- * What a live version reaches: the data files its catalog names, its tree's assets, whether rows
+ * What a live version reaches: the data files its metadata names, its tree's assets, whether rows
  * hold assets, and whether files.json names every data file (`named`). Without `named`, the
- * files in `tables` are only those at the version's snapshot, and the catalog may name more
+ * files in `tables` are only those at the version's snapshot, and the metadata may name more
  */
 const reachedBy = async (store: Store, dataDir: string, id: string) => {
   const dir = `versions/${id}/`;
@@ -233,10 +248,10 @@ export type CollectOptions = {
 /**
  * Deletes the data files and assets no live version reaches, written longer ago than the grace
  * period, as `fdl gc` does. These are files only expired versions reached, and files working
- * catalogs wrote and never pushed. A version reaches every data file its catalog names, listed
+ * metadata files wrote and never pushed. A version reaches every data file its metadata names, listed
  * in `named` of its files.json; while a live version's files.json lacks `named`, no data file is
  * deleted. Assets are kept while a live version's rows hold assets,
- * since reading those rows needs the catalog. The objects are listed before the versions are
+ * since reading those rows needs the metadata. The objects are listed before the versions are
  * read, and the versions are listed again just before deleting, so a version pushed meanwhile
  * keeps what it reaches. Returns the keys deleted
  */

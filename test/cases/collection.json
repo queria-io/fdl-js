@@ -403,6 +403,104 @@
         "assets/abc": "2026-11-01T00:00:00Z"
       },
       "deleted": []
+    },
+    {
+      "name": "leaves alone the files of a former data_dir",
+      "files": {
+        "fdl.json": {
+          "fdl": "0.1",
+          "data_dir": "data/"
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/version.json": {
+          "fdl": "0.1",
+          "id": "019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c",
+          "seq": 1,
+          "parents": [],
+          "created_at": "2026-11-01T00:00:00Z",
+          "author": {
+            "name": "example"
+          },
+          "message": "",
+          "catalog": {
+            "path": "ducklake.duckdb",
+            "storage": "duckdb-v1.5.0",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "ducklake": {
+            "format": "1.0",
+            "snapshot_id": 1,
+            "snapshots": [1]
+          },
+          "files": {
+            "path": "files.json",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/files.json": {
+          "tables": {
+            "main.t": {
+              "files": []
+            }
+          },
+          "named": []
+        }
+      },
+      "objects": {
+        "data/main/t/ducklake-a.parquet": "2026-11-01T00:00:00Z",
+        "ducklake.duckdb.files/main/t/ducklake-a.parquet": "2026-11-01T00:00:00Z"
+      },
+      "deleted": ["data/main/t/ducklake-a.parquet"]
+    },
+    {
+      "name": "deletes nothing while data_dir is not a folder under the root",
+      "files": {
+        "fdl.json": {
+          "fdl": "0.1",
+          "data_dir": "data"
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/version.json": {
+          "fdl": "0.1",
+          "id": "019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c",
+          "seq": 1,
+          "parents": [],
+          "created_at": "2026-11-01T00:00:00Z",
+          "author": {
+            "name": "example"
+          },
+          "message": "",
+          "catalog": {
+            "path": "ducklake.duckdb",
+            "storage": "duckdb-v1.5.0",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "ducklake": {
+            "format": "1.0",
+            "snapshot_id": 1,
+            "snapshots": [1]
+          },
+          "files": {
+            "path": "files.json",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        "versions/019a3c4e-7b21-7f3a-9c55-2f0d8e1a4b6c/files.json": {
+          "tables": {
+            "main.t": {
+              "files": []
+            }
+          },
+          "named": []
+        }
+      },
+      "objects": {
+        "data/main/t/ducklake-a.parquet": "2026-11-01T00:00:00Z",
+        "datamain/t/ducklake-a.parquet": "2026-11-01T00:00:00Z"
+      },
+      "deleted": []
     }
   ]
 }

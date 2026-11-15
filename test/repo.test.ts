@@ -121,7 +121,7 @@ describe("readVersion", () => {
 
   it("refuses a data_dir outside the repository", async () => {
     await expect(open(patched({ "fdl.json": '{"fdl":"0.1","data_dir":"../x/"}' }))).rejects.toThrow(
-      /outside/,
+      /not a folder under the root/,
     );
   });
 });

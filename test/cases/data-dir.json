@@ -1,0 +1,211 @@
+{
+  "cases": [
+    {
+      "name": "absent: the default",
+      "fdl_json": {
+        "fdl": "0.1"
+      },
+      "data_dir": "data/"
+    },
+    {
+      "name": "the default, written out",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "data/"
+      },
+      "data_dir": "data/"
+    },
+    {
+      "name": "dots inside a segment",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "ducklake.duckdb.files/"
+      },
+      "data_dir": "ducklake.duckdb.files/"
+    },
+    {
+      "name": "more than one segment",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "lake/data/"
+      },
+      "data_dir": "lake/data/"
+    },
+    {
+      "name": "digits, _ and -",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "data_2-x/"
+      },
+      "data_dir": "data_2-x/"
+    },
+    {
+      "name": "no trailing slash",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "data"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "empty",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": ""
+      },
+      "data_dir": null
+    },
+    {
+      "name": "the root itself",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "starts with a slash",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "/data/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "an empty segment",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "data//x/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "a dot segment",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "./data/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "a parent segment",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "../data/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "a parent segment inside",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "data/../refs/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "dots alone",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": ".../"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "percent-encoded dots",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "%2e%2e/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "an absolute URL",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "https://example.org/data/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "another storage",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "s3://bucket/data/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "a backslash",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "data\\x/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "a space",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "data files/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "upper case",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "Data/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "non-ASCII",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "データ/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "versions",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "versions/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "under refs",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "refs/x/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "assets",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "assets/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "not a string",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": 1
+      },
+      "data_dir": null
+    },
+    {
+      "name": "null",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": null
+      },
+      "data_dir": null
+    }
+  ]
+}

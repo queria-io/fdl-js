@@ -2,14 +2,7 @@
 // take older versions out of retention (as `fdl expire` does) and delete the data files no
 // live version reaches once past the grace period (as `fdl gc` does). Metadata files are never
 // opened: what a version reaches comes from `named` in its files.json
-import {
-  FdlError,
-  type VersionRecord,
-  isFileName,
-  isVersionId,
-  readConfig,
-  resolve,
-} from "./repo.js";
+import { FdlError, isFileName, isVersionId, readConfig, resolve } from "./repo.js";
 import { type R2Like, type Store, r2Store, retryOnce } from "./store.js";
 
 /** A listed object: its key and when it was written */
@@ -81,6 +74,9 @@ type Head = {
   files?: { path: string };
   tree?: { path: string };
   dataset?: { path: string };
+  /** The metadata file. Records written by fdl 0.26 and earlier name it `catalog` */
+  metadata?: { path?: unknown };
+  catalog?: { path?: unknown };
 };
 
 const record = async (store: Store, id: string): Promise<Head | null> => {
@@ -109,16 +105,15 @@ const held = async (store: MaintainedStore): Promise<Set<string>> => {
 };
 
 /** The metadata file a version records: `metadata`, or `catalog` in records written by fdl 0.26 and earlier */
-const metadataPath = (record: VersionRecord): string | null => {
-  const entry = (record.metadata ?? record.catalog) as { path?: unknown } | undefined;
-  return isFileName(entry?.path) ? entry.path : null;
+const metadataPath = (head: Head): string | null => {
+  const path = (head.metadata ?? head.catalog)?.path;
+  return isFileName(path) ? path : null;
 };
 
 /** Takes one version out of retention: the mark first, then its metadata and indexes */
-const expireOne = async (store: MaintainedStore, id: string, now: Date) => {
+const expireOne = async (store: MaintainedStore, id: string, head: Head, now: Date) => {
   const dir = `versions/${id}/`;
-  const text = await store.text(`${dir}version.json`);
-  const metadata = text === null ? null : metadataPath(JSON.parse(text) as VersionRecord);
+  const metadata = metadataPath(head);
   if (!(await isExpired(store, id)))
     await store.put(
       `${dir}expired.json`,
@@ -168,7 +163,7 @@ export const expire = async (
     if (current === null) return [];
     const recent = since !== undefined && new Date(current.created_at) >= since;
     const expired = position >= keep && !recent && !kept.has(id);
-    if (expired && !dryRun) await expireOne(store, id, now);
+    if (expired && !dryRun) await expireOne(store, id, current, now);
     // A parent in any other form is not followed: the ID becomes part of a path
     const parent = current.parents[0];
     const rest = await walk(isVersionId(parent) ? parent : undefined, position + 1);

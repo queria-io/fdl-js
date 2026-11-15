@@ -53,7 +53,7 @@ await expire(store, { keep: 7, graceMs: 86_400_000 });
 await collect(store, { graceMs: 86_400_000 });
 ```
 
-`expire` and `collect` take `{ dryRun: true }` to list the versions or keys without changing anything. Any store with `list` (keys and when they were written), `put` and `delete` works. `expire` also takes `by` (a person, or a process such as a scheduled job), which it records in each `expired.json`.
+`expire` and `collect` take `{ dryRun: true }` to list the versions or keys without changing anything. Any store with `list` (keys and when they were written), `put` and `delete` works. `expire` also takes `by` (a person, or a process such as a scheduled job) and `message` (why, in free text), which it records in each `expired.json`.
 
 ## What it follows
 

@@ -78,14 +78,21 @@ describe("expire", () => {
     expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([]);
   });
 
-  it("records who took the versions out", async () => {
+  it("records who took the versions out and why", async () => {
     const store = await memory();
     const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
-    await expire(store, { keep: 1, graceMs: DAY, by: "nightly retention", now: NOW });
+    await expire(store, {
+      keep: 1,
+      graceMs: DAY,
+      by: "nightly retention",
+      message: "Keep the newest version",
+      now: NOW,
+    });
     expect(JSON.parse((await store.text(`versions/${first}/expired.json`))!)).toEqual({
       expired_at: NOW.toISOString(),
       reason: "retention",
       by: "nightly retention",
+      message: "Keep the newest version",
     });
   });
 

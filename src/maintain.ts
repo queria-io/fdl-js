@@ -186,14 +186,14 @@ const expireOne = async (
   id: string,
   head: Head,
   now: Date,
-  by: string | undefined,
+  { by, message }: Pick<ExpireOptions, "by" | "message">,
 ) => {
   const dir = `versions/${id}/`;
   const metadata = new Set(metadataPaths(head).map((path) => dir + path));
   if (!(await isExpired(store, id)))
     await store.put(
       `${dir}expired.json`,
-      `${JSON.stringify({ expired_at: now.toISOString(), reason: "retention", ...(by ? { by } : {}) })}\n`,
+      `${JSON.stringify({ expired_at: now.toISOString(), reason: "retention", ...(by ? { by } : {}), ...(message ? { message } : {}) })}\n`,
     );
   const indexed = (await store.list(dir))
     .map((p) => p.key)
@@ -219,6 +219,8 @@ export type ExpireOptions = {
   graceMs: number;
   /** Who or what takes the versions out, recorded in `expired.json` */
   by?: string;
+  /** Why, in free text for people, recorded in `expired.json` */
+  message?: string;
   now?: Date;
   /** List only. Default false */
   dryRun?: boolean;
@@ -235,7 +237,7 @@ const MAIN = "refs/heads/main";
  */
 export const expire = async (
   store: MaintainedStore,
-  { keep, since, graceMs, by, now = new Date(), dryRun = false }: ExpireOptions,
+  { keep, since, graceMs, by, message, now = new Date(), dryRun = false }: ExpireOptions,
 ): Promise<string[]> => {
   if (keep < 1) throw new RangeError(`keep must be at least 1, got ${keep}`);
   const targets = await refTargets(store);
@@ -265,7 +267,7 @@ export const expire = async (
   // A ref may have come to point at one of them meanwhile
   const stillHeld = await held(store);
   const expired = taken.filter((id) => !stillHeld.has(id));
-  for (const id of expired) await expireOne(store, id, await read(id), now, by);
+  for (const id of expired) await expireOne(store, id, await read(id), now, { by, message });
   return expired;
 };
 

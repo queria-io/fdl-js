@@ -104,16 +104,19 @@ const held = async (store: MaintainedStore): Promise<Set<string>> => {
   return new Set(targets.filter((id): id is string => id !== null));
 };
 
-/** The metadata file a version records: `metadata`, or `catalog` in records written by fdl 0.26 and earlier */
-const metadataPath = (head: Head): string | null => {
+/**
+ * The metadata files to delete: the one the record names (`metadata`, or `catalog` in records
+ * written by fdl 0.26 and earlier), or both default names when the record names none it can use
+ */
+const metadataPaths = (head: Head): string[] => {
   const path = (head.metadata ?? head.catalog)?.path;
-  return isFileName(path) ? path : null;
+  return isFileName(path) ? [path] : ["metadata.db", "ducklake.duckdb"];
 };
 
 /** Takes one version out of retention: the mark first, then its metadata and indexes */
 const expireOne = async (store: MaintainedStore, id: string, head: Head, now: Date) => {
   const dir = `versions/${id}/`;
-  const metadata = metadataPath(head);
+  const metadata = new Set(metadataPaths(head).map((path) => dir + path));
   if (!(await isExpired(store, id)))
     await store.put(
       `${dir}expired.json`,
@@ -123,10 +126,12 @@ const expireOne = async (store: MaintainedStore, id: string, head: Head, now: Da
     .map((p) => p.key)
     .filter(
       (key) =>
-        (metadata !== null && key === `${dir}${metadata}`) ||
+        metadata.has(key) ||
         key === `${dir}files.json` ||
         key === `${dir}tree.json` ||
         key.startsWith(`${dir}metadata/`) ||
+        // Other DuckLake formats, as fdl 0.26 and earlier lay them out
+        key.startsWith(`${dir}catalogs/`) ||
         key.startsWith(`${dir}profiles/`),
     );
   await store.delete(indexed);

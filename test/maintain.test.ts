@@ -82,23 +82,31 @@ describe("expire", () => {
     const store = await memory();
     const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
     const dir = `versions/${first}/`;
-    // fdl 0.26 and earlier record it as `catalog`, at ducklake.duckdb
-    const old = JSON.parse((await store.text(`${dir}version.json`))!) as Record<string, unknown>;
+    const { catalog, metadata, ...rest } = JSON.parse(
+      (await store.text(`${dir}version.json`))!,
+    ) as Record<string, unknown>;
+    const recorded = (metadata ?? catalog) as object;
+    // fdl 0.26 and earlier record it as `catalog`, at ducklake.duckdb, and other formats under catalogs/
+    await store.put(
+      `${dir}version.json`,
+      JSON.stringify({ ...rest, catalog: { ...recorded, path: "ducklake.duckdb" } }),
+    );
     await store.put(`${dir}ducklake.duckdb`, "x");
-    await store.put(`${dir}metadata/1.0.db`, "x");
+    await store.put(`${dir}catalogs/1.0.duckdb`, "x");
     expect(await expire(store, { keep: 1, now: NOW })).toEqual([first]);
     expect(store.objects.has(`${dir}ducklake.duckdb`)).toBe(false);
-    expect(store.objects.has(`${dir}metadata/1.0.db`)).toBe(false);
+    expect(store.objects.has(`${dir}catalogs/1.0.duckdb`)).toBe(false);
 
     const renamed = await memory();
-    const { catalog, ...rest } = old;
     await renamed.put(
       `${dir}version.json`,
-      JSON.stringify({ ...rest, metadata: { ...(catalog as object), path: "metadata.db" } }),
+      JSON.stringify({ ...rest, metadata: { ...recorded, path: "metadata.db" } }),
     );
     await renamed.put(`${dir}metadata.db`, "x");
+    await renamed.put(`${dir}metadata/1.0.db`, "x");
     expect(await expire(renamed, { keep: 1, now: NOW })).toEqual([first]);
     expect(renamed.objects.has(`${dir}metadata.db`)).toBe(false);
+    expect(renamed.objects.has(`${dir}metadata/1.0.db`)).toBe(false);
   });
 
   it("lists what it would expire without changing anything", async () => {

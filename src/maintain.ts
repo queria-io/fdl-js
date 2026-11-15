@@ -88,10 +88,10 @@ const isExpired = async (store: Store, id: string) =>
   (await store.text(`versions/${id}/expired.json`)) !== null;
 
 /**
- * The versions some ref points at. A ref that does not hold a version ID is skipped; a failed
- * read is not, since a version a ref points at must not be taken out
+ * Every ref that holds a version, with the version. A ref that does not hold a version ID is
+ * skipped; a failed read is not, since a version a ref points at must not be taken out
  */
-const held = async (store: MaintainedStore): Promise<Set<string>> => {
+const refTargets = async (store: MaintainedStore): Promise<Map<string, string>> => {
   const keys = (await store.list("refs/")).map((p) => p.key);
   const targets = await Promise.all(
     keys.map((key) =>
@@ -101,7 +101,74 @@ const held = async (store: MaintainedStore): Promise<Set<string>> => {
       }),
     ),
   );
-  return new Set(targets.filter((id): id is string => id !== null));
+  return new Map(
+    keys.flatMap((key, i) => {
+      const target = targets[i];
+      return typeof target === "string" ? [[key, target] as const] : [];
+    }),
+  );
+};
+
+/** The versions some ref points at */
+const held = async (store: MaintainedStore): Promise<Set<string>> =>
+  new Set((await refTargets(store)).values());
+
+/** Reads each version's record once. A version without `version.json` cannot be accounted for */
+const records = (store: Store) => {
+  const read = new Map<string, Promise<Head>>();
+  return (id: string): Promise<Head> => {
+    const known = read.get(id);
+    if (known) return known;
+    const reading = record(store, id).then((head) => {
+      if (head === null) throw new FdlError(`version ${id} has no version.json`);
+      return head;
+    });
+    read.set(id, reading);
+    return reading;
+  };
+};
+
+/** The version IDs among a record's parents. A parent in any other form is not followed */
+const parentsOf = (head: Head): string[] => head.parents.filter(isVersionId);
+
+/** `id` and every version behind it, through every parent */
+const ancestors = async (id: string, read: (id: string) => Promise<Head>): Promise<Set<string>> => {
+  const found = new Set<string>();
+  const pending = [id];
+  for (let current = pending.pop(); current !== undefined; current = pending.pop()) {
+    if (found.has(current)) continue;
+    found.add(current);
+    pending.push(...parentsOf(await read(current)).filter((parent) => !found.has(parent)));
+  }
+  return found;
+};
+
+/** The merge bases of two versions, from everything behind each: the common ancestors no other common ancestor descends from */
+const mergeBases = async (
+  mine: Set<string>,
+  other: Set<string>,
+  read: (id: string) => Promise<Head>,
+): Promise<string[]> => {
+  const common = [...mine].filter((id) => other.has(id));
+  const behind = new Set((await Promise.all(common.map(read))).flatMap(parentsOf));
+  return common.filter((id) => !behind.has(id));
+};
+
+/** `id` and the versions behind it by first parent, `count` in all at most */
+const firstParents = async (
+  id: string,
+  count: number,
+  read: (id: string) => Promise<Head>,
+): Promise<string[]> => {
+  const found = [id];
+  let current = id;
+  while (found.length < count) {
+    const parent = parentsOf(await read(current))[0];
+    if (parent === undefined) break;
+    found.push(parent);
+    current = parent;
+  }
+  return found;
 };
 
 /**
@@ -144,11 +211,12 @@ const expireOne = async (
 };
 
 export type ExpireOptions = {
-  /** How many of the newest versions on the ref's first-parent line to keep (at least 1) */
+  /** How many of the newest versions on each branch's first-parent line to keep (at least 1) */
   keep: number;
-  ref?: string;
   /** Also keep the versions created at or after this time */
   since?: Date;
+  /** Also keep the versions created less than this long ago: a writer puts a version before it moves a ref to it */
+  graceMs: number;
   /** Who or what takes the versions out, recorded in `expired.json` */
   by?: string;
   now?: Date;
@@ -156,33 +224,48 @@ export type ExpireOptions = {
   dryRun?: boolean;
 };
 
+const MAIN = "refs/heads/main";
+
 /**
- * Takes the versions behind the newest `keep` on the ref's first-parent line out of retention,
- * as `fdl expire` does. Versions a ref points at, and with `since` those created at or after
- * it, are kept. Stops at the first version already
- * expired. Returns the IDs expired, newest first
+ * Takes versions out of retention, as `fdl expire` does, choosing them as the spec does
+ * (https://fdl.queria.io/spec/data-files#choosing-the-versions-to-take-out). Kept are the
+ * versions a ref points at, their merge bases with main, the newest `keep` on each branch's
+ * first-parent line, and those created at or after `since` or within the grace period. Nothing
+ * is taken out before main has a version. Returns the IDs taken out, newest first
  */
 export const expire = async (
   store: MaintainedStore,
-  { keep, ref = "refs/heads/main", since, by, now = new Date(), dryRun = false }: ExpireOptions,
+  { keep, since, graceMs, by, now = new Date(), dryRun = false }: ExpireOptions,
 ): Promise<string[]> => {
   if (keep < 1) throw new RangeError(`keep must be at least 1, got ${keep}`);
-  const newest = await resolve(store, ref).catch(() => null);
-  if (newest === null) return [];
-  const kept = await held(store);
-  const walk = async (id: string | undefined, position: number): Promise<string[]> => {
-    if (id === undefined || (position > 0 && (await isExpired(store, id)))) return [];
-    const current = await record(store, id);
-    if (current === null) return [];
-    const recent = since !== undefined && new Date(current.created_at) >= since;
-    const expired = position >= keep && !recent && !kept.has(id);
-    if (expired && !dryRun) await expireOne(store, id, current, now, by);
-    // A parent in any other form is not followed: the ID becomes part of a path
-    const parent = current.parents[0];
-    const rest = await walk(isVersionId(parent) ? parent : undefined, position + 1);
-    return expired ? [id, ...rest] : rest;
-  };
-  return walk(newest, 0);
+  const targets = await refTargets(store);
+  const main = targets.get(MAIN);
+  if (main === undefined) return [];
+  const read = records(store);
+  const kept = new Set(targets.values());
+  const behindMain = await ancestors(main, read);
+  for (const [name, target] of targets) {
+    if (target !== main)
+      for (const id of await mergeBases(behindMain, await ancestors(target, read), read))
+        kept.add(id);
+    if (name.startsWith("refs/heads/"))
+      for (const id of await firstParents(target, keep, read)) kept.add(id);
+  }
+  const cutoff = now.getTime() - graceMs;
+  const taken: string[] = [];
+  for (const id of await liveVersions(store)) {
+    if (kept.has(id)) continue;
+    const made = new Date((await read(id)).created_at).getTime();
+    if (made >= cutoff || (since !== undefined && made >= since.getTime())) continue;
+    taken.push(id);
+  }
+  taken.sort().reverse();
+  if (dryRun) return taken;
+  // A ref may have come to point at one of them meanwhile
+  const stillHeld = await held(store);
+  const expired = taken.filter((id) => !stillHeld.has(id));
+  for (const id of expired) await expireOne(store, id, await read(id), now, by);
+  return expired;
 };
 
 type FileList = {

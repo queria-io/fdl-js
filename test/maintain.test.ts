@@ -6,7 +6,7 @@ import { readVersion, resolve, tableNames } from "../src/repo.js";
 
 const fixture = new URL("./fixture/repo/", import.meta.url).pathname;
 const OLD = new Date("2026-01-01T00:00:00Z");
-const NOW = new Date("2026-02-01T00:00:00Z");
+const NOW = new Date("2026-12-01T00:00:00Z");
 const DAY = 86_400_000;
 
 const files = async (dir: string): Promise<string[]> =>
@@ -70,18 +70,18 @@ describe("expire", () => {
     const store = await memory();
     const head = await resolve(store);
     const first = (await readVersion(store, head)).record.parents[0]!;
-    expect(await expire(store, { keep: 1, now: NOW })).toEqual([first]);
+    expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([first]);
     expect(store.objects.has(`versions/${first}/expired.json`)).toBe(true);
     expect(store.objects.has(`versions/${first}/files.json`)).toBe(false);
     expect(store.objects.has(`versions/${first}/version.json`)).toBe(true);
     // Already expired: nothing more to do
-    expect(await expire(store, { keep: 1, now: NOW })).toEqual([]);
+    expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([]);
   });
 
   it("records who took the versions out", async () => {
     const store = await memory();
     const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
-    await expire(store, { keep: 1, by: "nightly retention", now: NOW });
+    await expire(store, { keep: 1, graceMs: DAY, by: "nightly retention", now: NOW });
     expect(JSON.parse((await store.text(`versions/${first}/expired.json`))!)).toEqual({
       expired_at: NOW.toISOString(),
       reason: "retention",
@@ -104,7 +104,7 @@ describe("expire", () => {
     );
     await store.put(`${dir}ducklake.duckdb`, "x");
     await store.put(`${dir}catalogs/1.0.duckdb`, "x");
-    expect(await expire(store, { keep: 1, now: NOW })).toEqual([first]);
+    expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([first]);
     expect(store.objects.has(`${dir}ducklake.duckdb`)).toBe(false);
     expect(store.objects.has(`${dir}catalogs/1.0.duckdb`)).toBe(false);
 
@@ -115,7 +115,7 @@ describe("expire", () => {
     );
     await renamed.put(`${dir}metadata.db`, "x");
     await renamed.put(`${dir}metadata/1.0.db`, "x");
-    expect(await expire(renamed, { keep: 1, now: NOW })).toEqual([first]);
+    expect(await expire(renamed, { keep: 1, graceMs: DAY, now: NOW })).toEqual([first]);
     expect(renamed.objects.has(`${dir}metadata.db`)).toBe(false);
     expect(renamed.objects.has(`${dir}metadata/1.0.db`)).toBe(false);
   });
@@ -123,14 +123,19 @@ describe("expire", () => {
   it("lists what it would expire without changing anything", async () => {
     const store = await memory();
     const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
-    expect(await expire(store, { keep: 1, now: NOW, dryRun: true })).toEqual([first]);
+    expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW, dryRun: true })).toEqual([first]);
     expect(store.objects.has(`versions/${first}/expired.json`)).toBe(false);
   });
 
   it("keeps the versions created since a time", async () => {
     const store = await memory();
     expect(
-      await expire(store, { keep: 1, since: new Date("2000-01-01T00:00:00Z"), now: NOW }),
+      await expire(store, {
+        keep: 1,
+        graceMs: DAY,
+        since: new Date("2000-01-01T00:00:00Z"),
+        now: NOW,
+      }),
     ).toEqual([]);
   });
 
@@ -138,7 +143,7 @@ describe("expire", () => {
     const store = await memory();
     const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
     await store.put("refs/tags/v1", `${first}\n`);
-    expect(await expire(store, { keep: 1, now: NOW })).toEqual([]);
+    expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([]);
   });
 
   it("expires nothing when a ref cannot be read", async () => {
@@ -150,7 +155,7 @@ describe("expire", () => {
       if (key === "refs/tags/v1") throw new Error("unavailable");
       return text(key);
     };
-    await expect(expire(store, { keep: 1, now: NOW })).rejects.toThrow(/unavailable/);
+    await expect(expire(store, { keep: 1, graceMs: DAY, now: NOW })).rejects.toThrow(/unavailable/);
     expect(store.objects.has(`versions/${first}/expired.json`)).toBe(false);
   });
 });
@@ -170,7 +175,7 @@ describe("collect", () => {
       uploaded: new Date(NOW.getTime() - 3_600_000),
       body: "",
     });
-    await expire(store, { keep: 1, now: NOW });
+    await expire(store, { keep: 1, graceMs: DAY, now: NOW });
 
     const planned = await collect(store, { graceMs: DAY, now: NOW, dryRun: true });
     expect(planned).toContain("data/main/towns/ducklake-unpushed.parquet");
@@ -282,6 +287,9 @@ describe("expire with a malformed parent", () => {
     const key = `versions/${head}/version.json`;
     const record = JSON.parse(store.objects.get(key)!.body);
     await store.put(key, JSON.stringify({ ...record, parents: ["../../refs/heads/main"] }));
-    expect(await expire(store, { keep: 1, now: NOW })).toEqual([]);
+    // The head has no parent it follows, so the version that was its parent is on no branch
+    expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW, dryRun: true })).toEqual([
+      record.parents[0],
+    ]);
   });
 });

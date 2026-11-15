@@ -114,13 +114,19 @@ const metadataPaths = (head: Head): string[] => {
 };
 
 /** Takes one version out of retention: the mark first, then its metadata and indexes */
-const expireOne = async (store: MaintainedStore, id: string, head: Head, now: Date) => {
+const expireOne = async (
+  store: MaintainedStore,
+  id: string,
+  head: Head,
+  now: Date,
+  by: string | undefined,
+) => {
   const dir = `versions/${id}/`;
   const metadata = new Set(metadataPaths(head).map((path) => dir + path));
   if (!(await isExpired(store, id)))
     await store.put(
       `${dir}expired.json`,
-      `${JSON.stringify({ expired_at: now.toISOString(), reason: "retention" })}\n`,
+      `${JSON.stringify({ expired_at: now.toISOString(), reason: "retention", ...(by ? { by } : {}) })}\n`,
     );
   const indexed = (await store.list(dir))
     .map((p) => p.key)
@@ -143,6 +149,8 @@ export type ExpireOptions = {
   ref?: string;
   /** Also keep the versions created at or after this time */
   since?: Date;
+  /** Who or what takes the versions out, recorded in `expired.json` */
+  by?: string;
   now?: Date;
   /** List only. Default false */
   dryRun?: boolean;
@@ -156,7 +164,7 @@ export type ExpireOptions = {
  */
 export const expire = async (
   store: MaintainedStore,
-  { keep, ref = "refs/heads/main", since, now = new Date(), dryRun = false }: ExpireOptions,
+  { keep, ref = "refs/heads/main", since, by, now = new Date(), dryRun = false }: ExpireOptions,
 ): Promise<string[]> => {
   if (keep < 1) throw new RangeError(`keep must be at least 1, got ${keep}`);
   const newest = await resolve(store, ref).catch(() => null);
@@ -168,7 +176,7 @@ export const expire = async (
     if (current === null) return [];
     const recent = since !== undefined && new Date(current.created_at) >= since;
     const expired = position >= keep && !recent && !kept.has(id);
-    if (expired && !dryRun) await expireOne(store, id, current, now);
+    if (expired && !dryRun) await expireOne(store, id, current, now, by);
     // A parent in any other form is not followed: the ID becomes part of a path
     const parent = current.parents[0];
     const rest = await walk(isVersionId(parent) ? parent : undefined, position + 1);

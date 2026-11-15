@@ -78,6 +78,17 @@ describe("expire", () => {
     expect(await expire(store, { keep: 1, now: NOW })).toEqual([]);
   });
 
+  it("records who took the versions out", async () => {
+    const store = await memory();
+    const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
+    await expire(store, { keep: 1, by: "nightly retention", now: NOW });
+    expect(JSON.parse((await store.text(`versions/${first}/expired.json`))!)).toEqual({
+      expired_at: NOW.toISOString(),
+      reason: "retention",
+      by: "nightly retention",
+    });
+  });
+
   it("deletes the metadata file at the name the record gives", async () => {
     const store = await memory();
     const first = (await readVersion(store, await resolve(store))).record.parents[0]!;

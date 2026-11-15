@@ -1,8 +1,15 @@
 // Retention for a repository's host, following https://fdl.queria.io/spec/data-files:
 // take older versions out of retention (as `fdl expire` does) and delete the data files no
-// live version reaches once past the grace period (as `fdl gc` does). Catalogs are never
+// live version reaches once past the grace period (as `fdl gc` does). Metadata files are never
 // opened: what a version reaches comes from `named` in its files.json
-import { FdlError, isFileName, isVersionId, readConfig, resolve } from "./repo.js";
+import {
+  FdlError,
+  type VersionRecord,
+  isFileName,
+  isVersionId,
+  readConfig,
+  resolve,
+} from "./repo.js";
 import { type R2Like, type Store, r2Store, retryOnce } from "./store.js";
 
 /** A listed object: its key and when it was written */
@@ -101,9 +108,17 @@ const held = async (store: MaintainedStore): Promise<Set<string>> => {
   return new Set(targets.filter((id): id is string => id !== null));
 };
 
-/** Takes one version out of retention: the mark first, then its catalogs and indexes */
+/** The metadata file a version records: `metadata`, or `catalog` in records written by fdl 0.26 and earlier */
+const metadataPath = (record: VersionRecord): string | null => {
+  const entry = (record.metadata ?? record.catalog) as { path?: unknown } | undefined;
+  return isFileName(entry?.path) ? entry.path : null;
+};
+
+/** Takes one version out of retention: the mark first, then its metadata and indexes */
 const expireOne = async (store: MaintainedStore, id: string, now: Date) => {
   const dir = `versions/${id}/`;
+  const text = await store.text(`${dir}version.json`);
+  const metadata = text === null ? null : metadataPath(JSON.parse(text) as VersionRecord);
   if (!(await isExpired(store, id)))
     await store.put(
       `${dir}expired.json`,
@@ -113,10 +128,10 @@ const expireOne = async (store: MaintainedStore, id: string, now: Date) => {
     .map((p) => p.key)
     .filter(
       (key) =>
-        key === `${dir}ducklake.duckdb` ||
+        (metadata !== null && key === `${dir}${metadata}`) ||
         key === `${dir}files.json` ||
         key === `${dir}tree.json` ||
-        key.startsWith(`${dir}catalogs/`) ||
+        key.startsWith(`${dir}metadata/`) ||
         key.startsWith(`${dir}profiles/`),
     );
   await store.delete(indexed);
@@ -164,7 +179,7 @@ export const expire = async (
 
 type FileList = {
   tables: { [table: string]: { files: { path: string; deletes?: { path: string } }[] } };
-  /** Every data file the catalog names, at any snapshot. Absent in files.json written before it */
+  /** Every data file the metadata names, at any snapshot. Absent in files.json written before it */
   named?: string[];
 };
 type Described = { tables?: { kind?: string; fields?: { asset?: boolean }[] }[] };
@@ -175,9 +190,9 @@ const SHA256 = /^assets\/[0-9a-f]{64}$/;
 const DATA_FILE = /(^|\/)ducklake-[^/]+\.parquet$/;
 
 /**
- * What a live version reaches: the data files its catalog names, its tree's assets, whether rows
+ * What a live version reaches: the data files its metadata names, its tree's assets, whether rows
  * hold assets, and whether files.json names every data file (`named`). Without `named`, the
- * files in `tables` are only those at the version's snapshot, and the catalog may name more
+ * files in `tables` are only those at the version's snapshot, and the metadata may name more
  */
 const reachedBy = async (store: Store, dataDir: string, id: string) => {
   const dir = `versions/${id}/`;
@@ -233,10 +248,10 @@ export type CollectOptions = {
 /**
  * Deletes the data files and assets no live version reaches, written longer ago than the grace
  * period, as `fdl gc` does. These are files only expired versions reached, and files working
- * catalogs wrote and never pushed. A version reaches every data file its catalog names, listed
+ * metadata files wrote and never pushed. A version reaches every data file its metadata names, listed
  * in `named` of its files.json; while a live version's files.json lacks `named`, no data file is
  * deleted. Assets are kept while a live version's rows hold assets,
- * since reading those rows needs the catalog. The objects are listed before the versions are
+ * since reading those rows needs the metadata. The objects are listed before the versions are
  * read, and the versions are listed again just before deleting, so a version pushed meanwhile
  * keeps what it reaches. Returns the keys deleted
  */

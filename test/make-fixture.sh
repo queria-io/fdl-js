@@ -39,5 +39,5 @@ ALTER TABLE lake.main.renamed RENAME COLUMN a TO b;
 "
 $FDL commit work/lake.sqlite -m "Second" --author test --dataset work/dataset.json
 rm -rf work
-# The reader never opens the catalogs; leave them out to keep the fixture small
-rm repo/versions/*/ducklake.duckdb
+# The reader never opens the metadata; leave it out to keep the fixture small
+rm repo/versions/*/metadata.db

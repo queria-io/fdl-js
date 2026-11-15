@@ -256,6 +256,7 @@ export const expire = async (
   for (const id of await liveVersions(store)) {
     if (kept.has(id)) continue;
     const made = new Date((await read(id)).created_at).getTime();
+    if (Number.isNaN(made)) throw new FdlError(`version ${id} has no valid created_at`);
     if (made >= cutoff || (since !== undefined && made >= since.getTime())) continue;
     taken.push(id);
   }

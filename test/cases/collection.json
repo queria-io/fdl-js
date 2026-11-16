@@ -291,7 +291,7 @@
       "deleted": []
     },
     {
-      "name": "keeps the assets a live version's tree lists",
+      "name": "keeps the files a live version's tree lists under objects/, not under assets/",
       "files": {
         "fdl.json": {
           "fdl": "0.1",
@@ -348,10 +348,14 @@
         }
       },
       "objects": {
-        "assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "2026-11-01T00:00:00Z",
-        "assets/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "2026-11-01T00:00:00Z"
+        "objects/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "2026-11-01T00:00:00Z",
+        "objects/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": "2026-11-01T00:00:00Z",
+        "assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "2026-11-01T00:00:00Z"
       },
-      "deleted": ["assets/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]
+      "deleted": [
+        "assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "objects/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ]
     },
     {
       "name": "leaves alone what is not a shared object",

@@ -5,15 +5,15 @@
       "fdl_json": {
         "fdl": "0.1"
       },
-      "data_dir": "data/"
+      "data_dir": "tables/"
     },
     {
       "name": "the default, written out",
       "fdl_json": {
         "fdl": "0.1",
-        "data_dir": "data/"
+        "data_dir": "tables/"
       },
-      "data_dir": "data/"
+      "data_dir": "tables/"
     },
     {
       "name": "dots inside a segment",
@@ -188,6 +188,14 @@
       "fdl_json": {
         "fdl": "0.1",
         "data_dir": "assets/"
+      },
+      "data_dir": null
+    },
+    {
+      "name": "objects",
+      "fdl_json": {
+        "fdl": "0.1",
+        "data_dir": "objects/"
       },
       "data_dir": null
     },

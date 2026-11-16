@@ -279,12 +279,14 @@ type FileList = {
 type Described = { tables?: { kind?: string; fields?: { asset?: boolean }[] }[] };
 type Tree = { entries: { sha256: string }[] };
 
-const SHA256 = /^assets\/[0-9a-f]{64}$/;
+const ASSET = /^assets\/[0-9a-f]{64}$/;
+/** A file a version's tree.json lists */
+const TREE_FILE = /^objects\/[0-9a-f]{64}$/;
 /** A data or delete file as DuckLake names it, under data_dir */
 const DATA_FILE = /(^|\/)ducklake-[^/]+\.parquet$/;
 
 /**
- * What a live version reaches: the data files its metadata names, its tree's assets, whether rows
+ * What a live version reaches: the data files its metadata names, its tree's files, whether rows
  * hold assets, and whether files.json names every data file (`named`). Without `named`, the
  * files in `tables` are only those at the version's snapshot, and the metadata may name more
  */
@@ -316,7 +318,7 @@ const reachedBy = async (store: Store, dataDir: string, id: string) => {
   return {
     keys: [
       ...data.map((path) => dataDir + path),
-      ...(tree ? (JSON.parse(tree) as Tree).entries.map((e) => `assets/${e.sha256}`) : []),
+      ...(tree ? (JSON.parse(tree) as Tree).entries.map((e) => `objects/${e.sha256}`) : []),
     ],
     assetRows: fields.some((f) => f.asset === true),
     named: list.named !== undefined,
@@ -340,7 +342,7 @@ export type CollectOptions = {
 };
 
 /**
- * Deletes the data files and assets no live version reaches, written longer ago than the grace
+ * Deletes the data files, assets and tree files no live version reaches, written longer ago than the grace
  * period, as `fdl gc` does. These are files only expired versions reached, and files working
  * metadata files wrote and never pushed. A version reaches every data file its metadata names, listed
  * in `named` of its files.json; while a live version's files.json lacks `named`, no data file is
@@ -355,7 +357,11 @@ export const collect = async (
 ): Promise<string[]> => {
   const { data_dir: dataDir } = await readConfig(store);
   const before = now.getTime() - graceMs;
-  const [data, assets] = await Promise.all([store.list(dataDir), store.list("assets/")]);
+  const [data, assets, trees] = await Promise.all([
+    store.list(dataDir),
+    store.list("assets/"),
+    store.list("objects/"),
+  ]);
   const kept = new Set<string>();
   let assetRows = false;
   let unnamed = false;
@@ -374,7 +380,8 @@ export const collect = async (
     [
       // A live version whose files.json lacks `named` may reach data files no files.json lists
       ...(unnamed ? [] : old(data).filter((key) => DATA_FILE.test(key.slice(dataDir.length)))),
-      ...(assetRows ? [] : old(assets).filter((key) => SHA256.test(key))),
+      ...(assetRows ? [] : old(assets).filter((key) => ASSET.test(key))),
+      ...old(trees).filter((key) => TREE_FILE.test(key)),
     ].sort();
   if (dryRun) return planned();
   const seen = new Set(read);

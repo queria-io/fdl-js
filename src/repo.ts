@@ -76,12 +76,12 @@ const safe = (path: string) =>
 
 /**
  * Whether a value may be fdl.json's data_dir: a folder under the root, apart from the format's own
- * (versions/, refs/, assets/). It is taken as written, never corrected
+ * (versions/, refs/, assets/, objects/). It is taken as written, never corrected
  */
 export const isDataDir = (value: unknown): value is string =>
   typeof value === "string" &&
   value.endsWith("/") &&
-  !["versions", "refs", "assets"].includes(value.split("/")[0]!) &&
+  !["versions", "refs", "assets", "objects"].includes(value.split("/")[0]!) &&
   value
     .slice(0, -1)
     .split("/")
@@ -90,7 +90,7 @@ export const isDataDir = (value: unknown): value is string =>
 export const readConfig = async (store: Store): Promise<Config> => {
   const raw = await json<Partial<Config>>(store, "fdl.json");
   checkMajor(String(raw.fdl), "the repository");
-  const dataDir: unknown = "data_dir" in raw ? raw.data_dir : "data/";
+  const dataDir: unknown = "data_dir" in raw ? raw.data_dir : "tables/";
   if (!isDataDir(dataDir))
     throw new FdlError(`data_dir is not a folder under the root: ${JSON.stringify(dataDir)}`);
   return { ...raw, fdl: String(raw.fdl), data_dir: dataDir };

@@ -28,7 +28,7 @@ const rows = await readWhere(parquet, "lg_code", "131016", ["name"]);
 
 ## Stores
 
-A store is where the repository's root is. Keys are the layout's paths (`fdl.json`, `refs/heads/main`, `versions/<ID>/files.json`, `data/...`).
+A store is where the repository's root is. Keys are the layout's paths (`fdl.json`, `refs/heads/main`, `versions/<ID>/files.json`, `tables/...`).
 
 | Store | Reads from |
 | --- | --- |
@@ -45,7 +45,7 @@ Each retries a failed request once. A store is three functions (`text`, `size`, 
 
 ## Retention
 
-For the host of a repository: `expire(store, { keep, graceMs })` takes versions out of retention as `fdl expire` does, keeping the newest `keep` on each branch, the versions refs point at, their merge bases with main, and those made within the grace period, and `collect(store, { graceMs })` deletes the data files no live version reaches once past the grace period, as `fdl gc` does. Both read `files.json` and never open a catalog. Assets are deleted only while no live version's rows hold assets.
+For the host of a repository: `expire(store, { keep, graceMs })` takes versions out of retention as `fdl expire` does, keeping the newest `keep` on each branch, the versions refs point at, their merge bases with main, and those made within the grace period, and `collect(store, { graceMs })` deletes the data files and tree files (`objects/`) no live version reaches once past the grace period, as `fdl gc` does. Both read `files.json` and never open a catalog. Assets are deleted only while no live version's rows hold assets.
 
 ```ts
 const store = r2MaintainedStore(env.BUCKET, "towns/");

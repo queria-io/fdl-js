@@ -29,7 +29,17 @@ export type FileEntry = {
   deletes?: { path: string; rows: number; bytes: number };
 };
 export type FileList = {
-  tables: Record<string, { files: FileEntry[]; renamed_columns?: boolean }>;
+  tables: Record<
+    string,
+    {
+      files: FileEntry[];
+      renamed_columns?: boolean;
+      /** The table's fdl.primary_key tag, when it has one */
+      primary_key?: string[];
+      /** The table's fdl.assets tag, when it has one */
+      assets?: string[];
+    }
+  >;
 };
 
 /** One version of a repository, with its files.json */

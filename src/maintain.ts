@@ -272,7 +272,13 @@ export const expire = async (
 };
 
 type FileList = {
-  tables: { [table: string]: { files: { path: string; deletes?: { path: string } }[] } };
+  tables: {
+    [table: string]: {
+      files: { path: string; deletes?: { path: string } }[];
+      /** The table's fdl.assets tag. Absent in files.json written before tags */
+      assets?: string[];
+    };
+  };
   /** Every data file the metadata names, at any snapshot. Absent in files.json written before it */
   named?: string[];
 };
@@ -287,7 +293,8 @@ const DATA_FILE = /(^|\/)ducklake-[^/]+\.parquet$/;
 
 /**
  * What a live version reaches: the data files its metadata names, its tree's files, whether rows
- * hold assets, and whether files.json names every data file (`named`). Without `named`, the
+ * hold assets (a table with the fdl.assets tag in files.json, or, in a version written before tags,
+ * a field with `asset: true` in dataset.json), and whether files.json names every data file (`named`). Without `named`, the
  * files in `tables` are only those at the version's snapshot, and the metadata may name more
  */
 const reachedBy = async (store: Store, dataDir: string, id: string) => {
@@ -320,7 +327,9 @@ const reachedBy = async (store: Store, dataDir: string, id: string) => {
       ...data.map((path) => dataDir + path),
       ...(tree ? (JSON.parse(tree) as Tree).entries.map((e) => `objects/${e.sha256}`) : []),
     ],
-    assetRows: fields.some((f) => f.asset === true),
+    assetRows:
+      Object.values(list.tables).some((t) => (t.assets ?? []).length > 0) ||
+      fields.some((f) => f.asset === true),
     named: list.named !== undefined,
   };
 };

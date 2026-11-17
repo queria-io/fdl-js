@@ -208,6 +208,20 @@ describe("collect", () => {
     expect(store.objects.has(asset)).toBe(true);
   });
 
+  it("keeps assets while a live version's files.json names asset columns", async () => {
+    const store = await memory();
+    const head = await resolve(store);
+    const key = `versions/${head}/files.json`;
+    const files = JSON.parse(store.objects.get(key)!.body);
+    for (const table of Object.values<{ assets?: string[] }>(files.tables)) table.assets = ["pdf"];
+    await store.put(key, JSON.stringify(files));
+    await store.delete([`versions/${head}/dataset.json`]);
+    const asset = `assets/${"a".repeat(64)}`;
+    store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
+    expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(asset);
+    expect(store.objects.has(asset)).toBe(true);
+  });
+
   it("keeps what a version pushed while it runs reaches", async () => {
     const store = await memory();
     const head = await resolve(store);

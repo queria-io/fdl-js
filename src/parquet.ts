@@ -83,9 +83,15 @@ const readFooter = async (file: AsyncBuffer, footerBytes?: number): Promise<Arra
 
 /**
  * A table's column as one data file holds it: its name in the file (undefined when the file was
- * written before the column was added) and the value rows of such a file hold
+ * written before the column was added), the value rows of such a file hold, and the cast from the
+ * file's values to the column's type (an int32 file of a column widened to int64 gives numbers)
  */
-export type FileColumn = { name: string; physical: string | undefined; fill: () => unknown };
+export type FileColumn = {
+  name: string;
+  physical: string | undefined;
+  fill: () => unknown;
+  cast: (value: unknown) => unknown;
+};
 
 export type ParquetFile = {
   key: string;
@@ -115,12 +121,18 @@ const topLevel = (metadata: FileMetaData): { name: string; id?: number }[] => {
 };
 
 const INTEGER = new Set(["int8", "int16", "int32", "uint8", "uint16", "uint32"]);
+const BIGINT = new Set(["int64", "uint64"]);
+
+/** DuckDB writes infinities and NaN as inf, -inf and nan, which Number() does not read */
+const SPECIAL: Record<string, number> = { inf: Infinity, "-inf": -Infinity, nan: NaN };
+const float = (text: string) => SPECIAL[text.toLowerCase()] ?? Number(text);
 
 /** The value a column's default text stands for, typed as hyparquet returns the column */
 const defaultValue = ({ name, type, default: text }: Column): (() => unknown) => {
   if (text === undefined) return () => null;
-  if (INTEGER.has(type) || type === "float32" || type === "float64") return () => Number(text);
-  if (type === "int64" || type === "uint64") return () => BigInt(text);
+  if (INTEGER.has(type)) return () => Number(text);
+  if (type === "float32" || type === "float64") return () => float(text);
+  if (BIGINT.has(type)) return () => BigInt(text);
   if (type === "boolean") return () => text === "true";
   if (type === "varchar" || type === "json") return () => text;
   return () => {
@@ -138,6 +150,8 @@ const fileColumns = (metadata: FileMetaData, columns: Column[]): FileColumn[] =>
       inFile.find((f) => f.id === undefined && f.name === c.name)
     )?.name,
     fill: defaultValue(c),
+    // A column widened from a narrower integer type keeps numbers in the files written before
+    cast: BIGINT.has(c.type) ? (v) => (typeof v === "number" ? BigInt(v) : v) : (v) => v,
   }));
 };
 
@@ -186,11 +200,29 @@ export const openParquet = async (
 export type RowRange = { rowStart: number; rowEnd: number };
 type Value = string | number | bigint;
 
+/** The index in a row group's columns of a top-level leaf column. schema[0] is the root */
 const columnIndex = (metadata: FileMetaData, column: string): number => {
-  // schema[0] is the root; leaves follow in column order (flat tables only)
-  const i = metadata.schema.findIndex((s, n) => n > 0 && s.name === column) - 1;
-  if (i < 0) throw new Error(`no column ${column}`);
-  return i;
+  let leaf = 0;
+  let i = 1;
+  while (i < metadata.schema.length) {
+    const s = metadata.schema[i]!;
+    if (!s.num_children) {
+      if (s.name === column) return leaf;
+      leaf++;
+      i++;
+      continue;
+    }
+    if (s.name === column) throw new Error(`${column} is not a leaf column`);
+    // Skip the group's subtree, counting its leaves
+    let pending = s.num_children;
+    i++;
+    while (pending > 0) {
+      const child = metadata.schema[i++]!.num_children ?? 0;
+      if (child === 0) leaf++;
+      pending += child - 1;
+    }
+  }
+  throw new Error(`no column ${column}`);
 };
 
 // A UTF-16 code unit, shifted so that units compare in code point order: surrogates (U+10000
@@ -271,12 +303,17 @@ export const readRows = async <T = Record<string, unknown>>(
     physical.length > 0
       ? await parquetReadObjects({ file, metadata, compressors, ...range, columns: physical })
       : Array.from(
-          { length: (range.rowEnd ?? Number(metadata.num_rows)) - start },
+          {
+            length: Math.max(
+              0,
+              Math.min(range.rowEnd ?? Infinity, Number(metadata.num_rows)) - start,
+            ),
+          },
           (): Record<string, unknown> => ({}),
         );
   return keep(rows).map((row) =>
     Object.fromEntries(
-      wanted.map((c) => [c.name, c.physical === undefined ? c.fill() : row[c.physical]]),
+      wanted.map((c) => [c.name, c.physical === undefined ? c.fill() : c.cast(row[c.physical])]),
     ),
   ) as T[];
 };

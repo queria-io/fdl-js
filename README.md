@@ -2,7 +2,7 @@
 
 Read DuckLake tables published as [FDL](https://fdl.queria.io) repositories from JavaScript, without DuckDB: resolve a ref to a version, list the data files of its tables from `files.json`, and read the Parquet files by range with [hyparquet](https://github.com/hyparam/hyparquet). It runs in Cloudflare Workers, browsers and Node.
 
-Reading never writes to the store; only the [retention](#retention) functions for a repository's host do. It reads only tables whose files can be read as they are: a table with deleted rows or renamed columns is refused, since reading its Parquet files without the catalog would return deleted rows or miss columns. Read those with DuckDB.
+Reading never writes to the store; only the [retention](#retention) functions for a repository's host do. Rows are read as DuckLake returns them: `openParquet` reads a data file's delete file, and `readRows` and `readWhere` leave out the deleted rows. Columns are found by the `id` that `files.json` lists for each column, which DuckLake writes as the Parquet `field_id`, so a renamed column is read under its new name, a dropped column is left out, and a column added after a file was written holds its default (or null) in that file's rows. Renamed fields inside a `struct` keep their names in the file. A table with renamed columns whose `files.json` has no `columns` (written before fdl-cli 0.24) is refused; read it with DuckDB.
 
 ## Install
 

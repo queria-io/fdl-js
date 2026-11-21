@@ -8,7 +8,7 @@ import {
   parquetMetadata,
   parquetReadObjects,
 } from "hyparquet";
-import type { DataFile } from "./repo.js";
+import { type Column, type DataFile, FdlError } from "./repo.js";
 import type { Store } from "./store.js";
 
 /** DuckDB writes zstd by default. fzstd is plain JS, so it runs in Workers and browsers */
@@ -81,23 +81,106 @@ const readFooter = async (file: AsyncBuffer, footerBytes?: number): Promise<Arra
   return length <= guess ? tail.slice(guess - length) : file.slice(size - length, size);
 };
 
-export type ParquetFile = { key: string; file: AsyncBuffer; metadata: FileMetaData };
+/**
+ * A table's column as one data file holds it: its name in the file (undefined when the file was
+ * written before the column was added) and the value rows of such a file hold
+ */
+export type FileColumn = { name: string; physical: string | undefined; fill: () => unknown };
+
+export type ParquetFile = {
+  key: string;
+  file: AsyncBuffer;
+  metadata: FileMetaData;
+  /** The table's columns, in files.json's order, when the DataFile gave them */
+  columns?: FileColumn[];
+  /** Positions of the deleted rows, when the DataFile has a delete file */
+  deleted?: Set<number>;
+};
 
 export type OpenOptions = { cache?: FooterCache; onRead?: OnRead };
 
-/** Opens a data file: reads its footer, from the cache when it is there */
+/** The top-level columns of a file, with their field_id. schema[0] is the root */
+const topLevel = (metadata: FileMetaData): { name: string; id?: number }[] => {
+  const out: { name: string; id?: number }[] = [];
+  let i = 1;
+  while (i < metadata.schema.length) {
+    const s = metadata.schema[i]!;
+    out.push({ name: s.name, ...(s.field_id !== undefined ? { id: s.field_id } : {}) });
+    // Skip the element's subtree
+    let pending = s.num_children ?? 0;
+    i++;
+    while (pending > 0) pending += (metadata.schema[i++]!.num_children ?? 0) - 1;
+  }
+  return out;
+};
+
+const INTEGER = new Set(["int8", "int16", "int32", "uint8", "uint16", "uint32"]);
+
+/** The value a column's default text stands for, typed as hyparquet returns the column */
+const defaultValue = ({ name, type, default: text }: Column): (() => unknown) => {
+  if (text === undefined) return () => null;
+  if (INTEGER.has(type) || type === "float32" || type === "float64") return () => Number(text);
+  if (type === "int64" || type === "uint64") return () => BigInt(text);
+  if (type === "boolean") return () => text === "true";
+  if (type === "varchar" || type === "json") return () => text;
+  return () => {
+    throw new FdlError(`cannot fill ${name}: a default of type ${type}`);
+  };
+};
+
+/** Finds each column of the table in the file by field_id (by name when the file has none) */
+const fileColumns = (metadata: FileMetaData, columns: Column[]): FileColumn[] => {
+  const inFile = topLevel(metadata);
+  return columns.map((c) => ({
+    name: c.name,
+    physical: (
+      inFile.find((f) => f.id === c.id) ??
+      inFile.find((f) => f.id === undefined && f.name === c.name)
+    )?.name,
+    fill: defaultValue(c),
+  }));
+};
+
+const deletedPositions = async (
+  store: Store,
+  deletes: NonNullable<DataFile["deletes"]>,
+  options: OpenOptions,
+): Promise<Set<number>> => {
+  const parquet = await openParquet(store, deletes, options);
+  const rows = await readRows<{ pos: number | bigint }>(parquet, { columns: ["pos"] });
+  return new Set(rows.map((r) => Number(r.pos)));
+};
+
+/**
+ * Opens a data file: reads its footer, from the cache when it is there, and the positions in its
+ * delete file when it has one
+ */
 export const openParquet = async (
   store: Store,
-  { key, bytes, footerBytes }: DataFile,
-  { cache, onRead }: OpenOptions = {},
+  { key, bytes, footerBytes, deletes, columns }: DataFile,
+  options: OpenOptions = {},
 ): Promise<ParquetFile> => {
+  const { cache, onRead } = options;
   const file = asyncBuffer(store, key, bytes, onRead);
-  // The cache only saves reads: when it fails, the footer is read from the file
-  const hit = await cache?.get(key).catch(() => undefined);
-  if (hit) return { key, file, metadata: parquetMetadata(hit) };
-  const footer = await readFooter(file, footerBytes);
-  await cache?.put(key, footer).catch(() => {});
-  return { key, file, metadata: parquetMetadata(footer) };
+  const footer = async () => {
+    // The cache only saves reads: when it fails, the footer is read from the file
+    const hit = await cache?.get(key).catch(() => undefined);
+    if (hit) return hit;
+    const read = await readFooter(file, footerBytes);
+    await cache?.put(key, read).catch(() => {});
+    return read;
+  };
+  const [metadata, deleted] = await Promise.all([
+    footer().then(parquetMetadata),
+    deletes ? deletedPositions(store, deletes, options) : undefined,
+  ]);
+  return {
+    key,
+    file,
+    metadata,
+    ...(columns ? { columns: fileColumns(metadata, columns) } : {}),
+    ...(deleted ? { deleted } : {}),
+  };
 };
 
 export type RowRange = { rowStart: number; rowEnd: number };
@@ -157,20 +240,45 @@ export const rowRangesFor = (metadata: FileMetaData, column: string, value: Valu
   ).ranges;
 };
 
-/** Reads the rows given (all of them by default), the columns given (all by default) */
-export const readRows = <T = Record<string, unknown>>(
-  { file, metadata }: ParquetFile,
+/**
+ * Reads the rows given (all of them by default), the columns given (all by default), leaving out
+ * deleted rows. With the table's columns, columns are found by field_id, so a renamed column is
+ * read under its new name, a dropped one is left out, and one added after the file was written
+ * holds its default (or null). Without them, columns the file lacks are left out
+ */
+export const readRows = async <T = Record<string, unknown>>(
+  { file, metadata, columns: table, deleted }: ParquetFile,
   { columns, ...range }: Partial<RowRange> & { columns?: string[] } = {},
 ): Promise<T[]> => {
-  const names = new Set(metadata.schema.slice(1).map((s) => s.name));
-  return parquetReadObjects({
-    file,
-    metadata,
-    compressors,
-    ...range,
-    // Columns the file lacks are left out, so a reader can ask for a column added later
-    ...(columns ? { columns: columns.filter((c) => names.has(c)) } : {}),
-  }) as Promise<T[]>;
+  const start = range.rowStart ?? 0;
+  const keep = <R>(rows: R[]) => (deleted ? rows.filter((_, i) => !deleted.has(start + i)) : rows);
+  if (!table) {
+    const names = new Set(metadata.schema.slice(1).map((s) => s.name));
+    const rows = await parquetReadObjects({
+      file,
+      metadata,
+      compressors,
+      ...range,
+      // Columns the file lacks are left out, so a reader can ask for a column added later
+      ...(columns ? { columns: columns.filter((c) => names.has(c)) } : {}),
+    });
+    return keep(rows) as T[];
+  }
+  // Columns the table lacks are left out, so a reader can ask for a column added later
+  const wanted = columns ? columns.flatMap((name) => table.filter((t) => t.name === name)) : table;
+  const physical = wanted.flatMap((c) => (c.physical === undefined ? [] : [c.physical]));
+  const rows =
+    physical.length > 0
+      ? await parquetReadObjects({ file, metadata, compressors, ...range, columns: physical })
+      : Array.from(
+          { length: (range.rowEnd ?? Number(metadata.num_rows)) - start },
+          (): Record<string, unknown> => ({}),
+        );
+  return keep(rows).map((row) =>
+    Object.fromEntries(
+      wanted.map((c) => [c.name, c.physical === undefined ? c.fill() : row[c.physical]]),
+    ),
+  ) as T[];
 };
 
 // INT64 columns come back as bigint; let 5 and 5n match. == compares a bigint with a number
@@ -193,7 +301,14 @@ export const readWhere = async <T = Record<string, unknown>>(
   value: Value,
   columns?: string[],
 ): Promise<T[]> => {
-  const ranges = rowRangesFor(parquet.metadata, column, value);
+  const c = parquet.columns?.find((t) => t.name === column);
+  if (parquet.columns && !c) throw new Error(`no column ${column}`);
+  // A column added after the file was written holds the same value in every row
+  if (c && c.physical === undefined && !same(c.fill(), value)) return [];
+  const ranges =
+    c && c.physical === undefined
+      ? [{ rowStart: 0, rowEnd: Number(parquet.metadata.num_rows) }]
+      : rowRangesFor(parquet.metadata, c?.physical ?? column, value);
   const wanted = columns && [column, ...columns.filter((c) => c !== column)];
   const rows = await Promise.all(
     ranges.map((r) =>

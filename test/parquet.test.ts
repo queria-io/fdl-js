@@ -94,3 +94,55 @@ describe("reading rows", () => {
     expect(rows).toEqual([{ name: "town 0" }, { name: "town 1" }]);
   });
 });
+
+describe("tables changed after their files were written", () => {
+  const read = async (table: string, rev?: string) => {
+    const version = await open(store, rev);
+    const files = await Promise.all(tableFiles(version, table)!.map((f) => openParquet(store, f)));
+    return (await Promise.all(files.map((f) => readRows(f)))).flat();
+  };
+
+  it("leaves out deleted rows", async () => {
+    const rows = await read("main.gone");
+    expect(rows.map((r) => r.i)).toEqual([3n, 4n, 5n, 6n, 7n, 8n, 9n]);
+  });
+
+  it("reads a renamed column under its new name and fills a column added later", async () => {
+    const rows = await read("main.renamed");
+    expect(rows).toHaveLength(13);
+    expect(rows[0]).toEqual({ b: 0n, c: null });
+    expect(rows.at(-1)).toEqual({ b: 12n, c: "x" });
+    expect(rows.filter((r) => r.b === 12n)).toHaveLength(1);
+  });
+
+  it("reads a range with the deleted positions of that range", async () => {
+    const [file] = tableFiles(await open(store), "main.gone")!;
+    const parquet = await openParquet(store, file!);
+    expect(await readRows(parquet, { rowStart: 2, rowEnd: 5, columns: ["i"] })).toEqual([
+      { i: 3n },
+      { i: 4n },
+    ]);
+  });
+
+  it("finds rows by a renamed column", async () => {
+    const version = await open(store);
+    const [first] = tableFiles(version, "main.renamed")!;
+    const parquet = await openParquet(store, first!);
+    expect(await readWhere(parquet, "b", 4)).toEqual([{ b: 4n, c: null }]);
+    expect(await readWhere(parquet, "c", "x")).toEqual([]);
+    expect(await readWhere(parquet, "c", 1)).toEqual([]);
+  });
+
+  it("fills a column added later with its default", async () => {
+    const version = await open(store);
+    const entry = version.files.tables["main.renamed"]!;
+    const columns = [
+      entry.columns![0]!,
+      { id: 2, name: "c", type: "varchar", nullable: true, default: "none" },
+    ];
+    const [first] = tableFiles(version, "main.renamed")!;
+    const parquet = await openParquet(store, { ...first!, columns });
+    expect((await readRows(parquet))[0]).toEqual({ b: 0n, c: "none" });
+    expect(await readWhere(parquet, "c", "none")).toHaveLength(10);
+  });
+});

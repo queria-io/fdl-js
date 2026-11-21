@@ -1,0 +1,68 @@
+{
+  "fdl": "0.1",
+  "id": "01a1fd7a-db07-7946-ba94-822bda9011eb",
+  "seq": 2,
+  "parents": ["01a1fd7a-ca82-768d-baf2-53c8adc73db3"],
+  "created_at": "2026-11-21T09:40:50Z",
+  "author": {
+    "name": "test"
+  },
+  "message": "Second",
+  "metadata": {
+    "path": "metadata.db",
+    "storage": "duckdb-v1.5.0",
+    "bytes": 339968,
+    "sha256": "c48e01351b5ca3557d3835257f79e6dd37228f911a9f2277e3f356fac1725af4"
+  },
+  "dataset": {
+    "path": "dataset.json",
+    "bytes": 1173,
+    "sha256": "06fe05e1385872048c0c9e6f439bb4223b2f9a4acb6edf5e9dd53f0381a31a7c"
+  },
+  "ducklake": {
+    "format": "1.0",
+    "snapshot_id": 10,
+    "snapshots": [6, 10]
+  },
+  "files": {
+    "path": "files.json",
+    "bytes": 3011,
+    "sha256": "ea9c86bb2e4f2c724218da3a66da7c8bb99ce73711a6363cab73f4c047f6035f"
+  },
+  "diff": {
+    "tables": {
+      "added": [],
+      "dropped": []
+    },
+    "rows": [
+      {
+        "table": "main.gone",
+        "from": 10,
+        "to": 7
+      },
+      {
+        "table": "main.renamed",
+        "from": 10,
+        "to": 13
+      }
+    ],
+    "columns": [
+      {
+        "table": "main.renamed",
+        "kind": "add_column",
+        "column": "c",
+        "breaking": false
+      },
+      {
+        "table": "main.renamed",
+        "kind": "rename_column",
+        "column": "b",
+        "from": "a",
+        "breaking": true
+      }
+    ],
+    "data": ["main.gone", "main.renamed"],
+    "dataset": false
+  },
+  "annotations": {}
+}

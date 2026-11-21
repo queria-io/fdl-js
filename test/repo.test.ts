@@ -48,7 +48,7 @@ describe("open", () => {
   it("gives data file keys under data_dir", async () => {
     const files = tableFiles(await open(store), "geo.town")!;
     expect(files).toHaveLength(1);
-    expect(files[0]!.key).toMatch(/^data\/geo\/town\/ducklake-.*\.parquet$/);
+    expect(files[0]!.key).toMatch(/^tables\/geo\/town\/ducklake-.*\.parquet$/);
     expect(files[0]!.rows).toBe(10000);
     expect(await store.size(files[0]!.key)).toBe(files[0]!.bytes);
   });
@@ -59,16 +59,21 @@ describe("open", () => {
     expect(tableFiles(version, "main.empty")).toEqual([]);
   });
 
-  it("refuses tables with deleted rows or renamed columns", async () => {
+  it("gives each data file its delete file and the table's columns", async () => {
     const version = await open(store);
-    expect(() => tableFiles(version, "main.gone")).toThrow(/deleted rows/);
-    expect(() => tableFiles(version, "main.renamed")).toThrow(/renamed columns/);
+    const [gone] = tableFiles(version, "main.gone")!;
+    expect(gone!.deletes).toMatchObject({ rows: 3 });
+    expect(gone!.deletes!.key).toMatch(/^tables\/main\/gone\/ducklake-.*-delete\.parquet$/);
+    expect(gone!.columns!.map((c) => [c.id, c.name])).toEqual([[1, "i"]]);
+    const renamed = tableFiles(version, "main.renamed")!;
+    expect(renamed[0]!.columns!.map((c) => c.name)).toEqual(["b", "c"]);
   });
 
-  it("reads them in the version before the change", async () => {
-    const version = await readVersion(store, (await versions()).first);
-    expect(tableFiles(version, "main.gone")).toHaveLength(1);
-    expect(tableFiles(version, "main.renamed")).toHaveLength(1);
+  it("refuses renamed columns when files.json does not list the columns", async () => {
+    const version = await open(store);
+    const { columns: _, ...entry } = version.files.tables["main.renamed"]!;
+    const old = { ...version, files: { tables: { "main.renamed": entry } } };
+    expect(() => tableFiles(old, "main.renamed")).toThrow(/renamed columns/);
   });
 });
 

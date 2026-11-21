@@ -28,11 +28,24 @@ export type FileEntry = {
   footer_bytes?: number;
   deletes?: { path: string; rows: number; bytes: number };
 };
+/** A column of a table in files.json. id is the field_id DuckLake writes in every data file */
+export type Column = {
+  id: number;
+  name: string;
+  type: string;
+  nullable: boolean;
+  /** The value, as text, that rows of files written before the column was added hold */
+  default?: string;
+  children?: Column[];
+};
+
 export type FileList = {
   tables: Record<
     string,
     {
       files: FileEntry[];
+      /** The table's columns, written from fdl-cli 0.24 */
+      columns?: Column[];
       renamed_columns?: boolean;
       /** The table's fdl.primary_key tag, when it has one */
       primary_key?: string[];
@@ -46,7 +59,16 @@ export type FileList = {
 export type Version = { config: Config; record: VersionRecord; files: FileList };
 
 /** A data file to read: its key in the store, rows and sizes from files.json */
-export type DataFile = { key: string; rows: number; bytes: number; footerBytes?: number };
+export type DataFile = {
+  key: string;
+  rows: number;
+  bytes: number;
+  footerBytes?: number;
+  /** The delete file that lists the positions of the file's deleted rows */
+  deletes?: { key: string; rows: number; bytes: number };
+  /** The table's columns, to find them in the file by field_id and fill those it lacks */
+  columns?: Column[];
+};
 
 const VERSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -175,24 +197,29 @@ export const tableNames = (version: Version): string[] => Object.keys(version.fi
 
 /**
  * The data files of a table (schema.table), or undefined when the version has no such table.
- * Throws for a table with delete files or renamed columns: reading its Parquet files as they are
- * would return deleted rows or miss columns
+ * Each carries its delete file and the table's columns, so openParquet and readRows leave out
+ * deleted rows and find renamed columns by field_id. Throws for a table with renamed columns
+ * whose files.json has no columns (written before fdl-cli 0.24): its old files carry old names
  */
 export const tableFiles = (version: Version, table: string): DataFile[] | undefined => {
   const entry = version.files.tables[table];
   if (!entry) return undefined;
-  if (entry.renamed_columns) throw new FdlError(`${table} has renamed columns`);
-  return entry.files.map((f) => {
-    if (f.deletes) throw new FdlError(`${table} has deleted rows`);
-    if (!safe(f.path))
-      throw new FdlError(`${table} names a file outside the repository: ${f.path}`);
-    return {
-      key: version.config.data_dir + f.path,
-      rows: f.rows,
-      bytes: f.bytes,
-      ...(f.footer_bytes !== undefined ? { footerBytes: f.footer_bytes } : {}),
-    };
-  });
+  if (entry.renamed_columns && !entry.columns)
+    throw new FdlError(`${table} has renamed columns, and files.json does not list its columns`);
+  const key = (path: string) => {
+    if (!safe(path)) throw new FdlError(`${table} names a file outside the repository: ${path}`);
+    return version.config.data_dir + path;
+  };
+  return entry.files.map((f) => ({
+    key: key(f.path),
+    rows: f.rows,
+    bytes: f.bytes,
+    ...(f.footer_bytes !== undefined ? { footerBytes: f.footer_bytes } : {}),
+    ...(f.deletes
+      ? { deletes: { key: key(f.deletes.path), rows: f.deletes.rows, bytes: f.deletes.bytes } }
+      : {}),
+    ...(entry.columns ? { columns: entry.columns } : {}),
+  }));
 };
 
 export type RefreshingOptions = {

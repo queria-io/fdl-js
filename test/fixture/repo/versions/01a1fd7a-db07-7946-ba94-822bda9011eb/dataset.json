@@ -51,11 +51,16 @@
     {
       "schema": "main",
       "name": "renamed",
-      "rows": 10,
+      "rows": 13,
       "fields": [
         {
           "name": "b",
           "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "c",
+          "type": "varchar",
           "nullable": true
         }
       ]

@@ -145,4 +145,23 @@ describe("tables changed after their files were written", () => {
     expect((await readRows(parquet))[0]).toEqual({ b: 0n, c: "none" });
     expect(await readWhere(parquet, "c", "none")).toHaveLength(10);
   });
+
+  it("reads a range past the end of a file that lacks every column asked for", async () => {
+    const [first] = tableFiles(await open(store), "main.renamed")!;
+    const parquet = await openParquet(store, first!);
+    expect(await readRows(parquet, { rowStart: 5, rowEnd: 100, columns: ["c"] })).toHaveLength(5);
+    expect(await readRows(parquet, { rowStart: 50, columns: ["c"] })).toEqual([]);
+  });
+
+  it("reads DuckDB's text for an infinite default", async () => {
+    const version = await open(store);
+    const entry = version.files.tables["main.renamed"]!;
+    const columns = [
+      entry.columns![0]!,
+      { id: 2, name: "c", type: "float64", nullable: true, default: "-inf" },
+    ];
+    const [first] = tableFiles(version, "main.renamed")!;
+    const parquet = await openParquet(store, { ...first!, columns });
+    expect((await readRows(parquet))[0]).toEqual({ b: 0n, c: -Infinity });
+  });
 });

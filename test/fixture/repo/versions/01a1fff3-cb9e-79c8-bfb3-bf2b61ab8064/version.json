@@ -1,0 +1,42 @@
+{
+  "fdl": "0.1",
+  "id": "01a1fff3-cb9e-79c8-bfb3-bf2b61ab8064",
+  "seq": 1,
+  "parents": [],
+  "created_at": "2026-11-21T21:12:10Z",
+  "author": {
+    "name": "test"
+  },
+  "message": "First",
+  "metadata": {
+    "path": "metadata.db",
+    "storage": "duckdb-v1.5.0",
+    "bytes": 290816,
+    "sha256": "f9e6b7adfb478d5ba250bd9bcd14abefb685072cecd441eccb4ce319ee095ce3"
+  },
+  "dataset": {
+    "path": "dataset.json",
+    "bytes": 1568,
+    "sha256": "d7dacc123283fb2f98c7c2906d28a9b099c76b45637a2359bcbe6047278912d2"
+  },
+  "ducklake": {
+    "format": "1.0",
+    "snapshot_id": 6,
+    "snapshots": [0, 6]
+  },
+  "files": {
+    "path": "files.json",
+    "bytes": 3880,
+    "sha256": "f1d4e04589630f6a6b0d55260b1a2262147063b40e1e5aa0d88668a9920ee6d2"
+  },
+  "diff": {
+    "tables": {
+      "added": ["geo.town", "main.empty", "main.gone", "main.nested", "main.renamed"],
+      "dropped": []
+    },
+    "rows": [],
+    "columns": [],
+    "data": []
+  },
+  "annotations": {}
+}

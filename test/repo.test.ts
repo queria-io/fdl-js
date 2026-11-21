@@ -41,6 +41,7 @@ describe("open", () => {
       "geo.town",
       "main.empty",
       "main.gone",
+      "main.nested",
       "main.renamed",
     ]);
   });

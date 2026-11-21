@@ -164,4 +164,37 @@ describe("tables changed after their files were written", () => {
     const parquet = await openParquet(store, { ...first!, columns });
     expect((await readRows(parquet))[0]).toEqual({ b: 0n, c: -Infinity });
   });
+
+  it("reads renamed and added fields inside structs, lists and maps", async () => {
+    const rows = await read("main.nested");
+    expect(rows.map(({ id, s, l, m }) => ({ id, s, l, m }))).toEqual([
+      { id: 1, s: { a2: 1, b: "x", c: 5 }, l: [{ p2: 1 }], m: { k: { q2: 2 } } },
+      { id: 2, s: { a2: 3, b: "y", c: 4 }, l: [{ p2: 5 }], m: { j: { q2: 6 } } },
+    ]);
+  });
+
+  it("fills defaults as the values a file written after holds them", async () => {
+    const [old, written] = await read("main.nested");
+    const added = ({ d, ts, tz, dec, tm, bl, h, js }: Record<string, unknown>) => ({
+      d,
+      ts,
+      tz,
+      dec,
+      tm,
+      bl,
+      h,
+      js,
+    });
+    expect(added(old!)).toEqual(added(written!));
+    expect(added(old!)).toEqual({
+      d: new Date("2020-01-02T00:00:00Z"),
+      ts: new Date("2020-01-02T03:04:05.123Z"),
+      tz: new Date("2020-01-01T18:04:05Z"),
+      dec: 12.34,
+      tm: 11_045_500_000n,
+      bl: "\u0001B",
+      h: 3,
+      js: { a: 1 },
+    });
+  });
 });

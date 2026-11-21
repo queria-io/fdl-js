@@ -7,7 +7,7 @@ import {
   readWhere,
   rowRangesFor,
 } from "../src/parquet.js";
-import { open, tableFiles } from "../src/repo.js";
+import { FdlError, open, tableFiles } from "../src/repo.js";
 
 const store = fileStore(new URL("./fixture/repo/", import.meta.url).pathname);
 const town = async () => tableFiles(await open(store), "geo.town")![0]!;
@@ -196,5 +196,42 @@ describe("tables changed after their files were written", () => {
       h: 3,
       js: { a: 1 },
     });
+  });
+
+  const fillWith = async (column: { type: string; default: string }) => {
+    const version = await open(store);
+    const entry = version.files.tables["main.renamed"]!;
+    const columns = [entry.columns![0]!, { id: 2, name: "c", nullable: true, ...column }];
+    const [first] = tableFiles(version, "main.renamed")!;
+    return openParquet(store, { ...first!, columns });
+  };
+
+  it("fills timestamps before 1970, before the common era and after 9999 as hyparquet reads them", async () => {
+    const c = async (type: string, text: string) =>
+      (await readRows(await fillWith({ type, default: text }), { rowEnd: 1 }))[0]!.c;
+    // hyparquet divides -876544 microseconds by 1000 toward zero
+    expect(await c("timestamp", "1969-12-31 23:59:59.123456")).toEqual(new Date(-876));
+    expect(await c("date", "0044-03-15 (BC)")).toEqual(
+      new Date(new Date(0).setUTCFullYear(-43, 2, 15)),
+    );
+    expect(await c("timestamptz", "0044-03-15 (BC) 12:00:00.5+00")).toEqual(
+      new Date(new Date(0).setUTCFullYear(-43, 2, 15) + 12 * 3_600_000 + 500),
+    );
+    expect(await c("date", "10000-01-01")).toEqual(
+      new Date(new Date(0).setUTCFullYear(10000, 0, 1)),
+    );
+  });
+
+  it("fills times as hyparquet reads them, a time with a time zone in UTC", async () => {
+    const c = async (type: string, text: string) =>
+      (await readRows(await fillWith({ type, default: text }), { rowEnd: 1 }))[0]!.c;
+    // The values hyparquet reads from files DuckDB writes with these defaults
+    expect(await c("timetz", "03:04:05+09")).toBe(65_045_000_000n);
+    expect(await c("time_ns", "01:02:03.123456789")).toBe(3_723_123_456_789n);
+  });
+
+  it("refuses a default of a type DuckLake takes no default for", async () => {
+    const parquet = await fillWith({ type: "struct", default: "{'a': 1}" });
+    await expect(readRows(parquet)).rejects.toThrow(FdlError);
   });
 });

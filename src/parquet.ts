@@ -8,7 +8,7 @@ import {
   parquetMetadata,
   parquetReadObjects,
 } from "hyparquet";
-import type { Column, DataFile } from "./repo.js";
+import { type Column, type DataFile, FdlError } from "./repo.js";
 import type { Store } from "./store.js";
 
 /** DuckDB writes zstd by default. fzstd is plain JS, so it runs in Workers and browsers */
@@ -154,25 +154,44 @@ const TIMESTAMP = /^timestamp(tz|_s|_ms|_ns)?$/;
 const SPECIAL: Record<string, number> = { inf: Infinity, "-inf": -Infinity, nan: NaN };
 const float = (text: string) => SPECIAL[text.toLowerCase()] ?? Number(text);
 
-/** A timestamp as DuckDB writes it ("2020-01-02 03:04:05.123456", "...+09"), as a Date */
+/**
+ * A date or timestamp as DuckDB writes it ("2020-01-02 03:04:05.123456", "...+09",
+ * "0044-03-15 (BC) 12:00:00", "10000-01-01"), as a Date. Like hyparquet, the microseconds since
+ * the epoch are divided by 1000 toward zero, so times before 1970 land on the same millisecond
+ */
 const timestamp = (text: string): Date => {
-  const m = /^(\d{4,}-\d\d-\d\d)(?:[ T](\d\d:\d\d:\d\d)(\.\d+)?)?([+-]\d\d(?::?\d\d)?)?$/.exec(
-    text,
-  );
+  const m =
+    /^(\d{4,})-(\d\d)-(\d\d)( \(BC\))?(?:[ T](\d\d):(\d\d):(\d\d)(\.\d+)?)?(?:([+-])(\d\d)(?::?(\d\d))?)?$/.exec(
+      text,
+    );
   if (!m) return new Date(text);
-  const [, date, time = "00:00:00", fraction = "", offset] = m;
-  const ms = fraction.slice(1, 4).padEnd(3, "0");
-  const zone = offset
-    ? `${offset.slice(0, 3)}:${offset.slice(3).replace(":", "").padEnd(2, "0")}`
-    : "Z";
-  return new Date(`${date}T${time}.${ms}${zone}`);
+  const [, y, mo, d, bc, h = "0", mi = "0", s = "0", fraction = "", sign, oh = "0", om = "0"] = m;
+  const base = new Date(0);
+  // DuckDB writes year 0 as 0001 (BC)
+  base.setUTCFullYear(bc ? 1 - Number(y) : Number(y), Number(mo) - 1, Number(d));
+  base.setUTCHours(Number(h), Number(mi), Number(s), 0);
+  const offset = (sign === "-" ? -1 : 1) * (Number(oh) * 60 + Number(om)) * 60_000;
+  const micros =
+    BigInt(base.getTime() - offset) * 1000n + BigInt(fraction.slice(1).padEnd(6, "0").slice(0, 6));
+  return new Date(Number(micros / 1000n));
 };
 
-/** A time of day ("03:04:05.123456") in microseconds, as hyparquet returns TIME */
-const timeMicros = (text: string): bigint => {
-  const [hms = "", fraction = ""] = text.split(".");
-  const [h = 0, m = 0, sec = 0] = hms.split(":").map(Number);
-  return BigInt((h * 60 + m) * 60 + sec) * 1_000_000n + BigInt(fraction.padEnd(6, "0").slice(0, 6));
+/**
+ * A time of day ("03:04:05.123456", "03:04:05+09") in units of 1e-digits seconds, as hyparquet
+ * returns TIME. A time with a time zone is moved to UTC, as DuckDB writes it
+ */
+const timeOfDay = (text: string, digits: number): bigint => {
+  const m = /^(\d\d):(\d\d):(\d\d)(?:\.(\d+))?(?:([+-])(\d\d)(?::?(\d\d))?)?$/.exec(text);
+  if (!m) throw new FdlError(`not a time: ${text}`);
+  const [, h, mi, sec, fraction = "", sign, oh = "0", om = "0"] = m;
+  const unit = 10n ** BigInt(digits);
+  const day = 86_400n * unit;
+  const offset = (sign === "-" ? -1n : 1n) * BigInt(Number(oh) * 3600 + Number(om) * 60) * unit;
+  const value =
+    BigInt((Number(h) * 60 + Number(mi)) * 60 + Number(sec)) * unit +
+    BigInt(fraction.padEnd(digits, "0").slice(0, digits)) -
+    (sign ? offset : 0n);
+  return ((value % day) + day) % day;
 };
 
 /** A blob as DuckDB writes it (\\x01 for a byte), decoded as hyparquet decodes BYTE_ARRAY */
@@ -189,22 +208,30 @@ const blob = (text: string): string =>
     ),
   );
 
-/** The value a column's default text stands for, typed as hyparquet returns the column */
-const parseDefault = (type: string, text: string): unknown => {
+/**
+ * The value a column's default text stands for, typed as hyparquet returns the column. This
+ * covers every type DuckLake takes a default for; DuckLake refuses defaults of struct, list and
+ * map columns, so another type means a writer this reader does not know
+ */
+const parseDefault = ({ name, type }: Column, text: string): unknown => {
   if (INTEGER.has(type)) return Number(text);
   if (BIGINT.has(type)) return BigInt(text);
   if (NUMBER.test(type)) return float(text);
   if (type === "boolean") return text === "true";
-  if (type === "date") return new Date(`${text}T00:00:00Z`);
-  if (TIMESTAMP.test(type)) return timestamp(text);
-  if (type === "time") return timeMicros(text);
+  if (type === "date" || TIMESTAMP.test(type)) return timestamp(text);
+  if (type === "time" || type === "timetz") return timeOfDay(text, 6);
+  if (type === "time_ns") return timeOfDay(text, 9);
   if (type === "blob") return blob(text);
   if (type === "json") return JSON.parse(text);
-  return text;
+  // hyparquet returns UUIDs as lower-case text, as DuckDB writes them
+  if (type === "varchar" || type === "uuid") return text;
+  throw new FdlError(`cannot fill ${name}: a default of type ${type}`);
 };
 
-const defaultValue = ({ type, default: text }: Column): (() => unknown) =>
-  text === undefined ? () => null : () => parseDefault(type, text);
+const defaultValue = (column: Column): (() => unknown) => {
+  const text = column.default;
+  return text === undefined ? () => null : () => parseDefault(column, text);
+};
 
 /**
  * Converts a file's value of a column to the column as it is now. Struct fields are found by

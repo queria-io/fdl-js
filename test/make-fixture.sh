@@ -33,6 +33,8 @@ CREATE TABLE lake.geo.town AS
 CREATE TABLE lake.main.gone AS SELECT i FROM range(10) t(i);
 CREATE TABLE lake.main.renamed AS SELECT i AS a FROM range(10) t(i);
 CREATE TABLE lake.main.empty (x INTEGER);
+CREATE TABLE lake.main.nested AS
+  SELECT 1 AS id, {'a': 1, 'b': 'x'} AS s, [{'p': 1}] AS l, MAP {'k': {'q': 2}} AS m;
 "
 $FDL commit work/lake.sqlite -m "First" --author test --dataset work/dataset.json
 $FDL push work/lake.sqlite
@@ -43,6 +45,19 @@ ALTER TABLE lake.main.renamed RENAME COLUMN a TO b;
 INSERT INTO lake.main.renamed SELECT i AS b FROM range(10, 13) t(i);
 ALTER TABLE lake.main.renamed ADD COLUMN c VARCHAR;
 UPDATE lake.main.renamed SET c = 'x' WHERE b = 12;
+ALTER TABLE lake.main.nested RENAME COLUMN s.a TO a2;
+ALTER TABLE lake.main.nested ADD COLUMN s.c INTEGER DEFAULT 5;
+ALTER TABLE lake.main.nested RENAME COLUMN l.element.p TO p2;
+ALTER TABLE lake.main.nested RENAME COLUMN m.value.q TO q2;
+ALTER TABLE lake.main.nested ADD COLUMN d DATE DEFAULT DATE '2020-01-02';
+ALTER TABLE lake.main.nested ADD COLUMN ts TIMESTAMP DEFAULT TIMESTAMP '2020-01-02 03:04:05.123456';
+ALTER TABLE lake.main.nested ADD COLUMN tz TIMESTAMPTZ DEFAULT TIMESTAMPTZ '2020-01-02 03:04:05+09';
+ALTER TABLE lake.main.nested ADD COLUMN dec DECIMAL(10,2) DEFAULT 12.34;
+ALTER TABLE lake.main.nested ADD COLUMN tm TIME DEFAULT TIME '03:04:05.5';
+ALTER TABLE lake.main.nested ADD COLUMN bl BLOB DEFAULT '\\x01B'::BLOB;
+ALTER TABLE lake.main.nested ADD COLUMN h HUGEINT DEFAULT 3;
+ALTER TABLE lake.main.nested ADD COLUMN js JSON DEFAULT '{\"a\":1}';
+INSERT INTO lake.main.nested (id, s, l, m) VALUES (2, {'a2': 3, 'b': 'y', 'c': 4}, [{'p2': 5}], MAP {'j': {'q2': 6}});
 "
 $FDL commit work/lake.sqlite -m "Second" --author test --dataset work/dataset.json
 $FDL push work/lake.sqlite

@@ -83,14 +83,15 @@ const readFooter = async (file: AsyncBuffer, footerBytes?: number): Promise<Arra
 
 /**
  * A table's column as one data file holds it: its name in the file (undefined when the file was
- * written before the column was added), the value rows of such a file hold, and the cast from the
- * file's values to the column's type (an int32 file of a column widened to int64 gives numbers)
+ * written before the column was added), the value rows of such a file hold, and the conversion
+ * from the file's values to the column as it is now (renamed or added struct fields, integers
+ * widened to int64)
  */
 export type FileColumn = {
   name: string;
   physical: string | undefined;
   fill: () => unknown;
-  cast: (value: unknown) => unknown;
+  convert: (value: unknown) => unknown;
 };
 
 export type ParquetFile = {
@@ -105,54 +106,192 @@ export type ParquetFile = {
 
 export type OpenOptions = { cache?: FooterCache; onRead?: OnRead };
 
-/** The top-level columns of a file, with their field_id. schema[0] is the root */
-const topLevel = (metadata: FileMetaData): { name: string; id?: number }[] => {
-  const out: { name: string; id?: number }[] = [];
-  let i = 1;
-  while (i < metadata.schema.length) {
+/** An element of the file's schema with its children */
+type Node = { name: string; id?: number; children: Node[] };
+
+/** The file's schema as a tree. schema[0] is the root */
+const schemaTree = (metadata: FileMetaData): Node => {
+  const build = (i: number): [Node, number] => {
     const s = metadata.schema[i]!;
-    out.push({ name: s.name, ...(s.field_id !== undefined ? { id: s.field_id } : {}) });
-    // Skip the element's subtree
-    let pending = s.num_children ?? 0;
-    i++;
-    while (pending > 0) pending += (metadata.schema[i++]!.num_children ?? 0) - 1;
-  }
-  return out;
+    const node: Node = {
+      name: s.name,
+      ...(s.field_id !== undefined ? { id: s.field_id } : {}),
+      children: [],
+    };
+    let next = i + 1;
+    for (let n = 0; n < (s.num_children ?? 0); n++) {
+      const [child, after] = build(next);
+      node.children.push(child);
+      next = after;
+    }
+    return [node, next];
+  };
+  return build(0)[0];
 };
+
+/** A direct child for a column: by field_id, or by name when the file has no field_ids */
+const childFor = (node: Node, column: Column): Node | undefined =>
+  node.children.find((n) => n.id === column.id) ??
+  node.children.find((n) => n.id === undefined && n.name === column.name);
+
+/**
+ * The node of a list's element or a map's value: below the repeated group that Parquet puts
+ * between them and the column
+ */
+const nestedFor = (node: Node, column: Column): Node | undefined =>
+  node.children.flatMap((g) => g.children).find((n) => n.id === column.id) ??
+  node.children
+    .flatMap((g) => g.children)
+    .find((n) => n.id === undefined && n.name === column.name);
 
 const INTEGER = new Set(["int8", "int16", "int32", "uint8", "uint16", "uint32"]);
 const BIGINT = new Set(["int64", "uint64"]);
+// hyparquet returns DOUBLE, which DuckDB writes for 128-bit integers, and decimals as numbers
+const NUMBER = /^(float32|float64|int128|uint128|decimal\(.*\))$/;
+const TIMESTAMP = /^timestamp(tz|_s|_ms|_ns)?$/;
 
 /** DuckDB writes infinities and NaN as inf, -inf and nan, which Number() does not read */
 const SPECIAL: Record<string, number> = { inf: Infinity, "-inf": -Infinity, nan: NaN };
 const float = (text: string) => SPECIAL[text.toLowerCase()] ?? Number(text);
 
-/** The value a column's default text stands for, typed as hyparquet returns the column */
-const defaultValue = ({ name, type, default: text }: Column): (() => unknown) => {
-  if (text === undefined) return () => null;
-  if (INTEGER.has(type)) return () => Number(text);
-  if (type === "float32" || type === "float64") return () => float(text);
-  if (BIGINT.has(type)) return () => BigInt(text);
-  if (type === "boolean") return () => text === "true";
-  if (type === "varchar" || type === "json") return () => text;
-  return () => {
-    throw new FdlError(`cannot fill ${name}: a default of type ${type}`);
-  };
+/**
+ * A date or timestamp as DuckDB writes it ("2020-01-02 03:04:05.123456", "...+09",
+ * "0044-03-15 (BC) 12:00:00", "10000-01-01"), as a Date. Like hyparquet, the microseconds since
+ * the epoch are divided by 1000 toward zero, so times before 1970 land on the same millisecond
+ */
+const timestamp = (text: string): Date => {
+  const m =
+    /^(\d{4,})-(\d\d)-(\d\d)( \(BC\))?(?:[ T](\d\d):(\d\d):(\d\d)(\.\d+)?)?(?:([+-])(\d\d)(?::?(\d\d))?)?$/.exec(
+      text,
+    );
+  if (!m) return new Date(text);
+  const [, y, mo, d, bc, h = "0", mi = "0", s = "0", fraction = "", sign, oh = "0", om = "0"] = m;
+  const base = new Date(0);
+  // DuckDB writes year 0 as 0001 (BC)
+  base.setUTCFullYear(bc ? 1 - Number(y) : Number(y), Number(mo) - 1, Number(d));
+  base.setUTCHours(Number(h), Number(mi), Number(s), 0);
+  const offset = (sign === "-" ? -1 : 1) * (Number(oh) * 60 + Number(om)) * 60_000;
+  const micros =
+    BigInt(base.getTime() - offset) * 1000n + BigInt(fraction.slice(1).padEnd(6, "0").slice(0, 6));
+  return new Date(Number(micros / 1000n));
+};
+
+/**
+ * A time of day ("03:04:05.123456", "03:04:05+09") in units of 1e-digits seconds, as hyparquet
+ * returns TIME. A time with a time zone is moved to UTC, as DuckDB writes it
+ */
+const timeOfDay = (text: string, digits: number): bigint => {
+  const m = /^(\d\d):(\d\d):(\d\d)(?:\.(\d+))?(?:([+-])(\d\d)(?::?(\d\d))?)?$/.exec(text);
+  if (!m) throw new FdlError(`not a time: ${text}`);
+  const [, h, mi, sec, fraction = "", sign, oh = "0", om = "0"] = m;
+  const unit = 10n ** BigInt(digits);
+  const day = 86_400n * unit;
+  const offset = (sign === "-" ? -1n : 1n) * BigInt(Number(oh) * 3600 + Number(om) * 60) * unit;
+  const value =
+    BigInt((Number(h) * 60 + Number(mi)) * 60 + Number(sec)) * unit +
+    BigInt(fraction.padEnd(digits, "0").slice(0, digits)) -
+    (sign ? offset : 0n);
+  return ((value % day) + day) % day;
+};
+
+/** A blob as DuckDB writes it (\\x01 for a byte), decoded as hyparquet decodes BYTE_ARRAY */
+const blob = (text: string): string =>
+  new TextDecoder().decode(
+    new Uint8Array(
+      text
+        .split(/(\\x[0-9a-fA-F]{2})/)
+        .flatMap((part) =>
+          /^\\x[0-9a-fA-F]{2}$/.test(part)
+            ? [parseInt(part.slice(2), 16)]
+            : [...new TextEncoder().encode(part)],
+        ),
+    ),
+  );
+
+/**
+ * The value a column's default text stands for, typed as hyparquet returns the column. This
+ * covers every type DuckLake takes a default for; DuckLake refuses defaults of struct, list and
+ * map columns, so another type means a writer this reader does not know
+ */
+const parseDefault = ({ name, type }: Column, text: string): unknown => {
+  if (INTEGER.has(type)) return Number(text);
+  if (BIGINT.has(type)) return BigInt(text);
+  if (NUMBER.test(type)) return float(text);
+  if (type === "boolean") return text === "true";
+  if (type === "date" || TIMESTAMP.test(type)) return timestamp(text);
+  if (type === "time" || type === "timetz") return timeOfDay(text, 6);
+  if (type === "time_ns") return timeOfDay(text, 9);
+  if (type === "blob") return blob(text);
+  if (type === "json") return JSON.parse(text);
+  // hyparquet returns UUIDs as lower-case text, as DuckDB writes them
+  if (type === "varchar" || type === "uuid") return text;
+  throw new FdlError(`cannot fill ${name}: a default of type ${type}`);
+};
+
+const defaultValue = (column: Column): (() => unknown) => {
+  const text = column.default;
+  return text === undefined ? () => null : () => parseDefault(column, text);
+};
+
+/**
+ * Converts a file's value of a column to the column as it is now. Struct fields are found by
+ * field_id, so renamed fields take their new names and fields added later their defaults
+ */
+const converter = (column: Column, node: Node): ((value: unknown) => unknown) => {
+  const children = column.children ?? [];
+  if (column.type === "struct") {
+    const fields = children.map((c) => {
+      const n = childFor(node, c);
+      return {
+        name: c.name,
+        physical: n?.name,
+        convert: n && converter(c, n),
+        fill: defaultValue(c),
+      };
+    });
+    return (value) =>
+      value === null || typeof value !== "object"
+        ? value
+        : Object.fromEntries(
+            fields.map((f) => [
+              f.name,
+              f.physical === undefined || !f.convert
+                ? f.fill()
+                : f.convert((value as Record<string, unknown>)[f.physical]),
+            ]),
+          );
+  }
+  if (column.type === "list") {
+    const element = children[0] && nestedFor(node, children[0]);
+    const convert = element && converter(children[0]!, element);
+    return (value) => (convert && Array.isArray(value) ? value.map(convert) : value);
+  }
+  if (column.type === "map") {
+    const valueColumn = children[1];
+    const valueNode = valueColumn && nestedFor(node, valueColumn);
+    const convert = valueNode && converter(valueColumn!, valueNode);
+    return (value) =>
+      convert && value !== null && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, convert(v)]))
+        : value;
+  }
+  // A column widened from a narrower integer type keeps numbers in the files written before
+  if (BIGINT.has(column.type)) return (v) => (typeof v === "number" ? BigInt(v) : v);
+  return (v) => v;
 };
 
 /** Finds each column of the table in the file by field_id (by name when the file has none) */
 const fileColumns = (metadata: FileMetaData, columns: Column[]): FileColumn[] => {
-  const inFile = topLevel(metadata);
-  return columns.map((c) => ({
-    name: c.name,
-    physical: (
-      inFile.find((f) => f.id === c.id) ??
-      inFile.find((f) => f.id === undefined && f.name === c.name)
-    )?.name,
-    fill: defaultValue(c),
-    // A column widened from a narrower integer type keeps numbers in the files written before
-    cast: BIGINT.has(c.type) ? (v) => (typeof v === "number" ? BigInt(v) : v) : (v) => v,
-  }));
+  const root = schemaTree(metadata);
+  return columns.map((c) => {
+    const node = childFor(root, c);
+    return {
+      name: c.name,
+      physical: node?.name,
+      fill: defaultValue(c),
+      convert: node ? converter(c, node) : (v) => v,
+    };
+  });
 };
 
 const deletedPositions = async (
@@ -313,7 +452,7 @@ export const readRows = async <T = Record<string, unknown>>(
         );
   return keep(rows).map((row) =>
     Object.fromEntries(
-      wanted.map((c) => [c.name, c.physical === undefined ? c.fill() : c.cast(row[c.physical])]),
+      wanted.map((c) => [c.name, c.physical === undefined ? c.fill() : c.convert(row[c.physical])]),
     ),
   ) as T[];
 };

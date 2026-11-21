@@ -1,0 +1,175 @@
+{
+  "tables": {
+    "geo.town": {
+      "files": [
+        {
+          "path": "geo/town/ducklake-01a1fff3-c875-7e08-92cc-0e1def45cfd5.parquet",
+          "rows": 10000,
+          "bytes": 20629,
+          "footer_bytes": 1583
+        }
+      ],
+      "columns": [
+        {
+          "id": 1,
+          "name": "lg_code",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "id": 2,
+          "name": "n",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "id": 3,
+          "name": "name",
+          "type": "varchar",
+          "nullable": true
+        }
+      ]
+    },
+    "main.empty": {
+      "files": [],
+      "columns": [
+        {
+          "id": 1,
+          "name": "x",
+          "type": "int32",
+          "nullable": true
+        }
+      ]
+    },
+    "main.gone": {
+      "files": [
+        {
+          "path": "main/gone/ducklake-01a1fff3-c8aa-7d20-91ca-7986c7a16ce5.parquet",
+          "rows": 10,
+          "bytes": 271,
+          "footer_bytes": 182
+        }
+      ],
+      "columns": [
+        {
+          "id": 1,
+          "name": "i",
+          "type": "int64",
+          "nullable": true
+        }
+      ]
+    },
+    "main.nested": {
+      "files": [
+        {
+          "path": "main/nested/ducklake-01a1fff3-c927-78e1-bebb-3162955efb92.parquet",
+          "rows": 1,
+          "bytes": 928,
+          "footer_bytes": 680
+        }
+      ],
+      "columns": [
+        {
+          "id": 1,
+          "name": "id",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "id": 2,
+          "name": "s",
+          "type": "struct",
+          "nullable": true,
+          "children": [
+            {
+              "id": 3,
+              "name": "a",
+              "type": "int32",
+              "nullable": true
+            },
+            {
+              "id": 4,
+              "name": "b",
+              "type": "varchar",
+              "nullable": true
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "name": "l",
+          "type": "list",
+          "nullable": true,
+          "children": [
+            {
+              "id": 6,
+              "name": "element",
+              "type": "struct",
+              "nullable": true,
+              "children": [
+                {
+                  "id": 7,
+                  "name": "p",
+                  "type": "int32",
+                  "nullable": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "name": "m",
+          "type": "map",
+          "nullable": true,
+          "children": [
+            {
+              "id": 9,
+              "name": "key",
+              "type": "varchar",
+              "nullable": true
+            },
+            {
+              "id": 10,
+              "name": "value",
+              "type": "struct",
+              "nullable": true,
+              "children": [
+                {
+                  "id": 11,
+                  "name": "q",
+                  "type": "int32",
+                  "nullable": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "main.renamed": {
+      "files": [
+        {
+          "path": "main/renamed/ducklake-01a1fff3-c8df-7c26-938c-8b395f03bfc5.parquet",
+          "rows": 10,
+          "bytes": 271,
+          "footer_bytes": 182
+        }
+      ],
+      "columns": [
+        {
+          "id": 1,
+          "name": "a",
+          "type": "int64",
+          "nullable": true
+        }
+      ]
+    }
+  },
+  "named": [
+    "geo/town/ducklake-01a1fff3-c875-7e08-92cc-0e1def45cfd5.parquet",
+    "main/gone/ducklake-01a1fff3-c8aa-7d20-91ca-7986c7a16ce5.parquet",
+    "main/nested/ducklake-01a1fff3-c927-78e1-bebb-3162955efb92.parquet",
+    "main/renamed/ducklake-01a1fff3-c8df-7c26-938c-8b395f03bfc5.parquet"
+  ]
+}

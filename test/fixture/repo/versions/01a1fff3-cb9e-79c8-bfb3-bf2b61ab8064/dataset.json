@@ -50,6 +50,33 @@
     },
     {
       "schema": "main",
+      "name": "nested",
+      "rows": 1,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "name": "s",
+          "type": "struct",
+          "nullable": true
+        },
+        {
+          "name": "l",
+          "type": "list",
+          "nullable": true
+        },
+        {
+          "name": "m",
+          "type": "map",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "schema": "main",
       "name": "renamed",
       "rows": 10,
       "fields": [

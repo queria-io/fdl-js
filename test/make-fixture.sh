@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds test/fixture/repo with the fdl CLI (https://github.com/queria-io/fdl).
-# Usage: FDL="uvx --from fdl-cli fdl" test/make-fixture.sh (fdl-cli with the _fdl schema)
+# Usage: FDL="uvx --from fdl-cli fdl" test/make-fixture.sh
 # PYTHON is a Python with duckdb, such as the fdl-cli tool environment
 set -euo pipefail
 cd "$(dirname "$0")/fixture"
@@ -20,6 +20,9 @@ con.execute(sys.argv[2])
 con.execute(sys.argv[1])
 PY
 }
+cat > work/dataset.json <<'JSON'
+{ "name": "towns", "title": "Towns" }
+JSON
 sql "
 CALL ducklake_set_option('lake', 'parquet_row_group_size', 2048);
 CALL ducklake_set_option('lake', 'parquet_compression', 'zstd');
@@ -33,7 +36,7 @@ CREATE TABLE lake.main.empty (x INTEGER);
 CREATE TABLE lake.main.nested AS
   SELECT 1 AS id, {'a': 1, 'b': 'x'} AS s, [{'p': 1}] AS l, MAP {'k': {'q': 2}} AS m;
 "
-$FDL commit work/lake.sqlite -m "First" --author test
+$FDL commit work/lake.sqlite -m "First" --author test --dataset work/dataset.json
 $FDL push work/lake.sqlite
 rm work/lake.sqlite*
 sql "
@@ -57,23 +60,10 @@ ALTER TABLE lake.main.nested ADD COLUMN js JSON DEFAULT '{\"a\":1}';
 INSERT INTO lake.main.nested (id, s, l, m) VALUES (2, {'a2': 3, 'b': 'y', 'c': 4}, [{'p2': 5}], MAP {'j': {'q2': 6}});
 USE lake;
 CREATE VIEW main.town_count AS SELECT lg_code, count(*) AS towns FROM geo.town GROUP BY lg_code;
-CREATE SCHEMA _fdl;
-CREATE TABLE _fdl.dataset AS SELECT 'Towns' AS title, DATE '2020-01-02' AS issued,
-  [{'id': 'cc-by-4.0', 'spdx': 'CC-BY-4.0'}] AS licenses;
-CREATE TABLE _fdl.tables AS SELECT * FROM (VALUES
-  ('geo', 'town', 'Towns', ['n'], NULL::BOOLEAN),
-  ('main', 'town_count', 'Towns by code', NULL, false)
-) t(schema, name, title, primary_key, profile);
-CREATE TABLE _fdl.columns AS SELECT * FROM (VALUES
-  ('geo', 'town', 'lg_code', 'Code')
-) t(schema, \"table\", name, title);
-CREATE TABLE _fdl.attributes AS SELECT 'geo' AS schema, 'town' AS \"table\", 'lg_code' AS \"column\",
-  'example-entity' AS key, '\"lg_code\"'::JSON AS value;
-CREATE TABLE _fdl.catalogs AS SELECT 'census' AS name, 'https://example.org/census/' AS url;
 "
-$FDL commit work/lake.sqlite -m "Second" --author test
+$FDL commit work/lake.sqlite -m "Second" --author test --dataset work/dataset.json
 $FDL push work/lake.sqlite
 rm work/lake.sqlite*
-rm -rf work
+rm -rf work dataset.json
 # The reader never opens the metadata or the profiles; leave them out to keep the fixture small
 rm -r repo/versions/*/metadata.db repo/versions/*/profiles

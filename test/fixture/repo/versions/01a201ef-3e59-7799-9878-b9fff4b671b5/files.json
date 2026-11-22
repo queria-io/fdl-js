@@ -3,7 +3,7 @@
     "geo.town": {
       "files": [
         {
-          "path": "geo/town/ducklake-01a2018f-872b-76b2-b8db-94f615a9c83e.parquet",
+          "path": "geo/town/ducklake-01a201ef-3afa-7093-beaa-d4d09ee349ff.parquet",
           "rows": 10000,
           "bytes": 20629,
           "footer_bytes": 1583
@@ -44,7 +44,7 @@
     "main.gone": {
       "files": [
         {
-          "path": "main/gone/ducklake-01a2018f-8767-708e-a343-fe23d811b705.parquet",
+          "path": "main/gone/ducklake-01a201ef-3b30-7a72-b645-346185d6f344.parquet",
           "rows": 10,
           "bytes": 271,
           "footer_bytes": 182
@@ -62,7 +62,7 @@
     "main.nested": {
       "files": [
         {
-          "path": "main/nested/ducklake-01a2018f-87f4-780d-8345-7b2c05c5e35e.parquet",
+          "path": "main/nested/ducklake-01a201ef-3ba6-707d-8f37-a746d558fd20.parquet",
           "rows": 1,
           "bytes": 928,
           "footer_bytes": 680
@@ -150,7 +150,7 @@
     "main.renamed": {
       "files": [
         {
-          "path": "main/renamed/ducklake-01a2018f-8799-7b15-ae5d-d50d6a239a42.parquet",
+          "path": "main/renamed/ducklake-01a201ef-3b5a-7a56-bf81-6d12d5ea41ab.parquet",
           "rows": 10,
           "bytes": 271,
           "footer_bytes": 182
@@ -167,9 +167,9 @@
     }
   },
   "named": [
-    "geo/town/ducklake-01a2018f-872b-76b2-b8db-94f615a9c83e.parquet",
-    "main/gone/ducklake-01a2018f-8767-708e-a343-fe23d811b705.parquet",
-    "main/nested/ducklake-01a2018f-87f4-780d-8345-7b2c05c5e35e.parquet",
-    "main/renamed/ducklake-01a2018f-8799-7b15-ae5d-d50d6a239a42.parquet"
+    "geo/town/ducklake-01a201ef-3afa-7093-beaa-d4d09ee349ff.parquet",
+    "main/gone/ducklake-01a201ef-3b30-7a72-b645-346185d6f344.parquet",
+    "main/nested/ducklake-01a201ef-3ba6-707d-8f37-a746d558fd20.parquet",
+    "main/renamed/ducklake-01a201ef-3b5a-7a56-bf81-6d12d5ea41ab.parquet"
   ]
 }

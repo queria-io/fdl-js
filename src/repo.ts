@@ -1,5 +1,6 @@
 // Resolve a ref to a version and list the data files of its tables, following
-// https://fdl.queria.io/spec/reading. Only files.json is read: the metadata is never opened
+// https://fdl.queria.io/spec/reading. Only tables.json (files.json in earlier versions) is read:
+// the metadata is never opened
 import { NotFoundError, type Store } from "./store.js";
 
 /** The FDL major versions this reader knows */
@@ -17,6 +18,9 @@ export type VersionRecord = {
   created_at: string;
   author: { name: string; [k: string]: unknown };
   message: string;
+  /** The version's tables.json */
+  tables?: { path: string; bytes: number; sha256: string };
+  /** The files.json of a version written before tables.json */
   files?: { path: string; bytes: number; sha256: string };
   [k: string]: unknown;
 };
@@ -39,35 +43,43 @@ export type Column = {
   children?: Column[];
 };
 
+/** A version's tables.json, or the files.json of a version written before it */
 export type FileList = {
   tables: Record<
     string,
     {
       files: FileEntry[];
-      /** The table's columns, written from fdl-cli 0.24 */
+      /** The table's columns. files.json written before fdl-cli 0.24 has none */
       columns?: Column[];
       renamed_columns?: boolean;
-      /** The table's primary key in _fdl.tables (the fdl.primary_key tag before _fdl) */
+      /** The columns that identify a row, when declared */
       primary_key?: string[];
-      /** The table's columns marked asset in _fdl.columns (the fdl.assets tag before _fdl) */
+      /** The columns that hold the sha256 of an asset, when declared */
       assets?: string[];
+      /** false: the writer makes no profile for the table */
+      profile?: boolean;
     }
   >;
-  /** Every view alive at the snapshot, keyed schema.view. Absent before writers listed views */
+  /** Every view alive at the snapshot, keyed schema.view. files.json has none */
   views?: Record<string, ViewEntry>;
-  /** _fdl.catalogs: the name each other repository the views read is attached under, to its URL */
-  catalogs?: Record<string, string>;
+  /** Each other dataset the views read, keyed by the name their SQL reads it under */
+  datasets?: Record<string, DatasetRef>;
 };
+
+/** Another dataset a view reads: the URL of its root and, when pinned, the version to read */
+export type DatasetRef = { url: string; version?: string };
 
 /** A view in files.json */
 export type ViewEntry = {
   /** The view's SQL as the metadata records it */
   sql: string;
-  /** The columns its query returns, with DuckDB's type names. Absent when the writer could not bind it */
+  /** The columns its query returns, with DuckDB's type names */
   columns?: { name: string; type: string }[];
+  /** false: the writer makes no profile for the view */
+  profile?: boolean;
 };
 
-/** One version of a repository, with its files.json */
+/** One version of a repository, with its tables.json (files.json in earlier versions) */
 export type Version = { config: Config; record: VersionRecord; files: FileList };
 
 /** A data file to read: its key in the store, rows and sizes from files.json */
@@ -176,7 +188,7 @@ export const resolve = async (store: Store, rev = "HEAD"): Promise<string> => {
   return found;
 };
 
-/** Reads a version: checks its record and expiry, and reads its files.json */
+/** Reads a version: checks its record and expiry, and reads its tables.json (or files.json) */
 export const readVersion = async (store: Store, id: string, config?: Config): Promise<Version> => {
   const dir = `versions/${id}/`;
   const [cfg, text, expired] = await Promise.all([
@@ -190,11 +202,12 @@ export const readVersion = async (store: Store, id: string, config?: Config): Pr
   const record = JSON.parse(text) as VersionRecord;
   if (record.id !== id) throw new FdlError(`${dir}version.json holds ${record.id}`);
   checkMajor(String(record.fdl), `version ${id}`);
-  const filesPath = record.files?.path ?? "files.json";
+  const filesPath = record.tables?.path ?? record.files?.path ?? "files.json";
   if (!isFileName(filesPath))
-    throw new FdlError(`version ${id} names files.json outside it: ${filesPath}`);
+    throw new FdlError(`version ${id} names a file outside it: ${filesPath}`);
   const files = await store.text(dir + filesPath);
-  if (files === null) throw new FdlError(`version ${id} has no files.json; read it with DuckDB`);
+  if (files === null)
+    throw new FdlError(`version ${id} has no tables.json or files.json; read it with DuckDB`);
   return { config: cfg, record, files: JSON.parse(files) as FileList };
 };
 
@@ -204,13 +217,13 @@ export const open = async (store: Store, rev = "HEAD"): Promise<Version> => {
   return readVersion(store, id, config);
 };
 
-/** The names (schema.table) of the version's tables, those of the _fdl schema among them */
+/** The names (schema.table) of the version's tables */
 export const tableNames = (version: Version): string[] => Object.keys(version.files.tables);
 
-/** The names (schema.view) of the version's views. [] when files.json does not list views */
+/** The names (schema.view) of the version's views. [] for a version with files.json */
 export const viewNames = (version: Version): string[] => Object.keys(version.files.views ?? {});
 
-/** A view (schema.view): its SQL and columns, or undefined when files.json does not list it */
+/** A view (schema.view): its SQL and columns, or undefined when the version does not list it */
 export const viewOf = (version: Version, view: string): ViewEntry | undefined => {
   const views = version.files.views;
   return views && Object.hasOwn(views, view) ? views[view] : undefined;

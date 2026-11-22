@@ -1,7 +1,8 @@
 // Retention for a repository's host, following https://fdl.queria.io/spec/data-files:
 // take older versions out of retention (as `fdl expire` does) and delete the data files no
 // live version reaches once past the grace period (as `fdl gc` does). Metadata files are never
-// opened: what a version reaches comes from `named` in its files.json
+// opened: what a version reaches comes from its tables.json, or `named` in an earlier version's
+// files.json
 import { FdlError, isFileName, isVersionId, readConfig, resolve } from "./repo.js";
 import { type R2Like, type Store, r2Store, retryOnce } from "./store.js";
 
@@ -71,6 +72,7 @@ type Head = {
   id: string;
   parents: string[];
   created_at: string;
+  tables?: { path: string };
   files?: { path: string };
   tree?: { path: string };
   dataset?: { path: string };
@@ -200,7 +202,9 @@ const expireOne = async (
     .filter(
       (key) =>
         metadata.has(key) ||
+        key === `${dir}tables.json` ||
         key === `${dir}files.json` ||
+        key === `${dir}dataset.json` ||
         key === `${dir}tree.json` ||
         key.startsWith(`${dir}metadata/`) ||
         // Other DuckLake formats, as fdl 0.26 and earlier lay them out
@@ -274,7 +278,7 @@ export const expire = async (
 type FileList = {
   tables: {
     [table: string]: {
-      files: { path: string; rows?: number; deletes?: { path: string; rows?: number } }[];
+      files: { path: string; deletes?: { path: string } }[];
       /** The table's asset columns. Absent in files.json written before tags */
       assets?: string[];
     };
@@ -293,9 +297,10 @@ const DATA_FILE = /(^|\/)ducklake-[^/]+\.parquet$/;
 
 /**
  * What a live version reaches: the data files its metadata names, its tree's files, whether rows
- * hold assets (a table with assets in files.json, _fdl.files with rows, or, in a version written
- * before tags, a field with `asset: true` in dataset.json), and whether files.json names every data file (`named`). Without `named`, the
- * files in `tables` are only those at the version's snapshot, and the metadata may name more
+ * hold assets (a table with assets in tables.json or files.json, or, in a version written before
+ * tags, a field with `asset: true` in dataset.json), and whether every data file it reaches is
+ * listed. A version with tables.json keeps one snapshot, so its `tables` list them all. An earlier
+ * version's files.json lists them in `named`; without it, the metadata may name more
  */
 const reachedBy = async (store: Store, dataDir: string, id: string) => {
   const dir = `versions/${id}/`;
@@ -306,12 +311,14 @@ const reachedBy = async (store: Store, dataDir: string, id: string) => {
     return dir + value;
   };
   const [files, described, tree] = await Promise.all([
-    store.text(name(current?.files?.path, "files.json")),
+    store.text(name(current?.tables?.path ?? current?.files?.path, "files.json")),
     store.text(name(current?.dataset?.path, "dataset.json")),
     store.text(name(current?.tree?.path, "tree.json")),
   ]);
   if (files === null)
-    throw new Error(`version ${id} is live but has no files.json to say what it reads`);
+    throw new Error(
+      `version ${id} is live but has no tables.json or files.json to say what it reads`,
+    );
   const list = JSON.parse(files) as FileList;
   const data = [
     ...(list.named ?? []),
@@ -329,12 +336,8 @@ const reachedBy = async (store: Store, dataDir: string, id: string) => {
     ],
     assetRows:
       Object.values(list.tables).some((t) => (t.assets ?? []).length > 0) ||
-      // _fdl.files.sha256 is an asset column by the spec, whether or not files.json says so
-      (list.tables["_fdl.files"]?.files ?? []).some(
-        (f) => f.rows === undefined || f.rows > (f.deletes?.rows ?? 0),
-      ) ||
       fields.some((f) => f.asset === true),
-    named: list.named !== undefined,
+    named: current?.tables !== undefined || list.named !== undefined,
   };
 };
 

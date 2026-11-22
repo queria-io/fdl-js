@@ -1,0 +1,279 @@
+{
+  "tables": {
+    "geo.town": {
+      "files": [
+        {
+          "path": "geo/town/ducklake-01a201ef-3afa-7093-beaa-d4d09ee349ff.parquet",
+          "rows": 10000,
+          "bytes": 20629,
+          "footer_bytes": 1583
+        }
+      ],
+      "columns": [
+        {
+          "id": 1,
+          "name": "lg_code",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "id": 2,
+          "name": "n",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "id": 3,
+          "name": "name",
+          "type": "varchar",
+          "nullable": true
+        }
+      ]
+    },
+    "main.empty": {
+      "files": [],
+      "columns": [
+        {
+          "id": 1,
+          "name": "x",
+          "type": "int32",
+          "nullable": true
+        }
+      ]
+    },
+    "main.gone": {
+      "files": [
+        {
+          "path": "main/gone/ducklake-01a201ef-3b30-7a72-b645-346185d6f344.parquet",
+          "rows": 10,
+          "bytes": 271,
+          "footer_bytes": 182,
+          "deletes": {
+            "path": "main/gone/ducklake-01a201ef-53d5-759a-8766-742e3fc00469-delete.parquet",
+            "rows": 3,
+            "bytes": 893
+          }
+        }
+      ],
+      "columns": [
+        {
+          "id": 1,
+          "name": "i",
+          "type": "int64",
+          "nullable": true
+        }
+      ]
+    },
+    "main.nested": {
+      "files": [
+        {
+          "path": "main/nested/ducklake-01a201ef-3ba6-707d-8f37-a746d558fd20.parquet",
+          "rows": 1,
+          "bytes": 928,
+          "footer_bytes": 680
+        },
+        {
+          "path": "main/nested/ducklake-01a201ef-55f6-7fa3-92e2-52743ea264cb.parquet",
+          "rows": 1,
+          "bytes": 2100,
+          "footer_bytes": 1499
+        }
+      ],
+      "columns": [
+        {
+          "id": 1,
+          "name": "id",
+          "type": "int32",
+          "nullable": true
+        },
+        {
+          "id": 2,
+          "name": "s",
+          "type": "struct",
+          "nullable": true,
+          "children": [
+            {
+              "id": 3,
+              "name": "a2",
+              "type": "int32",
+              "nullable": false
+            },
+            {
+              "id": 4,
+              "name": "b",
+              "type": "varchar",
+              "nullable": true
+            },
+            {
+              "id": 12,
+              "name": "c",
+              "type": "int32",
+              "nullable": false,
+              "default": "5"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "name": "l",
+          "type": "list",
+          "nullable": true,
+          "children": [
+            {
+              "id": 6,
+              "name": "element",
+              "type": "struct",
+              "nullable": true,
+              "children": [
+                {
+                  "id": 7,
+                  "name": "p2",
+                  "type": "int32",
+                  "nullable": false
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "name": "m",
+          "type": "map",
+          "nullable": true,
+          "children": [
+            {
+              "id": 9,
+              "name": "key",
+              "type": "varchar",
+              "nullable": true
+            },
+            {
+              "id": 10,
+              "name": "value",
+              "type": "struct",
+              "nullable": true,
+              "children": [
+                {
+                  "id": 11,
+                  "name": "q2",
+                  "type": "int32",
+                  "nullable": false
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "name": "d",
+          "type": "date",
+          "nullable": true,
+          "default": "2020-01-02"
+        },
+        {
+          "id": 14,
+          "name": "ts",
+          "type": "timestamp",
+          "nullable": true,
+          "default": "2020-01-02 03:04:05.123456"
+        },
+        {
+          "id": 15,
+          "name": "tz",
+          "type": "timestamptz",
+          "nullable": true,
+          "default": "2020-01-01 18:04:05+00"
+        },
+        {
+          "id": 16,
+          "name": "dec",
+          "type": "decimal(10,2)",
+          "nullable": true,
+          "default": "12.34"
+        },
+        {
+          "id": 17,
+          "name": "tm",
+          "type": "time",
+          "nullable": true,
+          "default": "03:04:05.5"
+        },
+        {
+          "id": 18,
+          "name": "bl",
+          "type": "blob",
+          "nullable": true,
+          "default": "\\x01B"
+        },
+        {
+          "id": 19,
+          "name": "h",
+          "type": "int128",
+          "nullable": true,
+          "default": "3"
+        },
+        {
+          "id": 20,
+          "name": "js",
+          "type": "json",
+          "nullable": true,
+          "default": "{\"a\":1}"
+        }
+      ],
+      "renamed_columns": true
+    },
+    "main.renamed": {
+      "files": [
+        {
+          "path": "main/renamed/ducklake-01a201ef-3b5a-7a56-bf81-6d12d5ea41ab.parquet",
+          "rows": 10,
+          "bytes": 271,
+          "footer_bytes": 182
+        },
+        {
+          "path": "main/renamed/ducklake-01a201ef-5407-76e4-ba79-ddd0b1a4af1b.parquet",
+          "rows": 3,
+          "bytes": 242,
+          "footer_bytes": 178,
+          "deletes": {
+            "path": "main/renamed/ducklake-01a201ef-544b-7806-a692-c933abfa1bd4-delete.parquet",
+            "rows": 1,
+            "bytes": 883
+          }
+        },
+        {
+          "path": "main/renamed/ducklake-01a201ef-544b-7119-9c6f-fd69602b1972.parquet",
+          "rows": 1,
+          "bytes": 522,
+          "footer_bytes": 393
+        }
+      ],
+      "columns": [
+        {
+          "id": 1,
+          "name": "b",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "id": 2,
+          "name": "c",
+          "type": "varchar",
+          "nullable": true
+        }
+      ],
+      "renamed_columns": true
+    }
+  },
+  "named": [
+    "geo/town/ducklake-01a201ef-3afa-7093-beaa-d4d09ee349ff.parquet",
+    "main/gone/ducklake-01a201ef-3b30-7a72-b645-346185d6f344.parquet",
+    "main/gone/ducklake-01a201ef-53d5-759a-8766-742e3fc00469-delete.parquet",
+    "main/nested/ducklake-01a201ef-3ba6-707d-8f37-a746d558fd20.parquet",
+    "main/nested/ducklake-01a201ef-55f6-7fa3-92e2-52743ea264cb.parquet",
+    "main/renamed/ducklake-01a201ef-3b5a-7a56-bf81-6d12d5ea41ab.parquet",
+    "main/renamed/ducklake-01a201ef-5407-76e4-ba79-ddd0b1a4af1b.parquet",
+    "main/renamed/ducklake-01a201ef-544b-7119-9c6f-fd69602b1972.parquet",
+    "main/renamed/ducklake-01a201ef-544b-7806-a692-c933abfa1bd4-delete.parquet"
+  ]
+}

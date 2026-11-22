@@ -12,7 +12,6 @@ import {
   tableNames,
 } from "../src/repo.js";
 import type { Store } from "../src/store.js";
-import { readFdlSchema } from "../src/fdl-schema.js";
 
 const store = fileStore(new URL("./fixture/repo/", import.meta.url).pathname);
 
@@ -41,11 +40,6 @@ describe("open", () => {
     const version = await open(store);
     expect(version.record.seq).toBe(2);
     expect(tableNames(version).sort()).toEqual([
-      "_fdl.attributes",
-      "_fdl.catalogs",
-      "_fdl.columns",
-      "_fdl.dataset",
-      "_fdl.tables",
       "geo.town",
       "main.empty",
       "main.gone",
@@ -108,7 +102,7 @@ describe("readVersion", () => {
     const { second } = await versions();
     await expect(
       readVersion(patched({ [`versions/${second}/files.json`]: null }), second),
-    ).rejects.toThrow(/no files.json/);
+    ).rejects.toThrow(/no tables.json or files.json/);
   });
 
   it("refuses a path that leaves the repository", async () => {
@@ -166,44 +160,69 @@ describe("views", () => {
   });
 });
 
-describe("readFdlSchema", () => {
-  it("reads the rows of the _fdl tables, with null for columns a table lacks", async () => {
-    const fdl = await readFdlSchema(store, await open(store));
-    expect(fdl.dataset).toMatchObject({ title: "Towns", description: null, language: null });
-    expect(fdl.dataset!.issued).toEqual(new Date("2020-01-02"));
-    expect(fdl.dataset!.licenses).toEqual([{ id: "cc-by-4.0", spdx: "CC-BY-4.0" }]);
-    expect(fdl.tables.map((t) => [t.schema, t.name, t.primary_key, t.profile])).toEqual([
-      ["geo", "town", ["n"], null],
-      ["main", "town_count", null, false],
-    ]);
-    expect(fdl.columns).toEqual([
-      {
-        schema: "geo",
-        table: "town",
-        name: "lg_code",
-        title: "Code",
-        description: null,
-        asset: null,
+describe("tables.json", () => {
+  // A version written with tables.json: its version.json names it, and files.json is gone
+  const withTables = async (list: object) => {
+    const { second } = await versions();
+    const dir = `versions/${second}/`;
+    const record = JSON.parse((await store.text(dir + "version.json"))!);
+    delete record.files;
+    record.tables = { path: "tables.json", bytes: 0, sha256: "" };
+    const s = patched({
+      [dir + "version.json"]: JSON.stringify(record),
+      [dir + "tables.json"]: JSON.stringify(list),
+      [dir + "files.json"]: null,
+    });
+    return readVersion(s, second);
+  };
+  const list = {
+    tables: {
+      "geo.town": {
+        files: [{ path: "geo/town/a.parquet", rows: 1, bytes: 1 }],
+        primary_key: ["n"],
+        assets: ["image"],
       },
-    ]);
-    expect(fdl.catalogs).toEqual([{ name: "census", url: "https://example.org/census/" }]);
-    expect(fdl.attributes).toEqual([
-      { schema: "geo", table: "town", column: "lg_code", key: "example-entity", value: "lg_code" },
-    ]);
-    expect(fdl).toMatchObject({ schemas: [], files: [] });
+      "main.raw": { files: [], profile: false },
+    },
+    views: { "main.town_count": { sql: "SELECT 1 AS n", profile: false } },
+    dependencies: {
+      census: {
+        url: "https://example.org/census/",
+        version: "01a20000-0000-7000-8000-000000000000",
+      },
+    },
+  };
+
+  it("reads tables.json with its declarations, views and dependencies", async () => {
+    const version = await withTables(list);
+    expect(tableNames(version).sort()).toEqual(["geo.town", "main.raw"]);
+    expect(version.files.tables["geo.town"]).toMatchObject({
+      primary_key: ["n"],
+      assets: ["image"],
+    });
+    expect(version.files.tables["main.raw"]!.profile).toBe(false);
+    expect(viewOf(version, "main.town_count")).toEqual({ sql: "SELECT 1 AS n", profile: false });
+    expect(version.files.dependencies).toEqual(list.dependencies);
   });
 
-  it("reads no rows from a version without _fdl", async () => {
-    const { first } = await versions();
-    expect(await readFdlSchema(store, await readVersion(store, first))).toEqual({
-      dataset: undefined,
-      schemas: [],
-      tables: [],
-      columns: [],
-      files: [],
-      catalogs: [],
-      attributes: [],
-    });
+  it("refuses a version.json that names tables.json outside the version", async () => {
+    const { second } = await versions();
+    const dir = `versions/${second}/`;
+    const record = JSON.parse((await store.text(dir + "version.json"))!);
+    record.tables = { path: "../x.json", bytes: 0, sha256: "" };
+    await expect(
+      readVersion(patched({ [dir + "version.json"]: JSON.stringify(record) }), second),
+    ).rejects.toThrow(/outside/);
+  });
+
+  it("refuses a version.json whose tables names no file, without falling back to files.json", async () => {
+    const { second } = await versions();
+    const dir = `versions/${second}/`;
+    const record = JSON.parse((await store.text(dir + "version.json"))!);
+    record.tables = { bytes: 0, sha256: "" };
+    await expect(
+      readVersion(patched({ [dir + "version.json"]: JSON.stringify(record) }), second),
+    ).rejects.toThrow(/outside/);
   });
 });
 

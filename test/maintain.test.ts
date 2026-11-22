@@ -1,8 +1,16 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { collect, expire, type MaintainedStore, type Placed } from "../src/maintain.js";
-import { readVersion, resolve, tableNames } from "../src/repo.js";
+import {
+  collect,
+  expire,
+  type MaintainedStore,
+  type Placed,
+  readAssetValues,
+} from "../src/maintain.js";
+import { fileStore } from "../src/node.js";
+import { openParquet, readRows } from "../src/parquet.js";
+import { readVersion, resolve, tableFiles, tableNames } from "../src/repo.js";
 
 const fixture = new URL("./fixture/repo/", import.meta.url).pathname;
 const OLD = new Date("2026-01-01T00:00:00Z");
@@ -74,6 +82,25 @@ const withNamed = (store: Awaited<ReturnType<typeof memory>>) => {
   return store;
 };
 
+// Each version written with tables.json in place of files.json, which drops `named`
+const withTables = (store: Awaited<ReturnType<typeof memory>>) => {
+  for (const [key, o] of store.objects) {
+    if (!key.endsWith("/files.json")) continue;
+    const dir = key.slice(0, -"files.json".length);
+    const { named: _, ...list } = JSON.parse(o.body);
+    store.objects.delete(key);
+    store.objects.set(`${dir}tables.json`, {
+      ...o,
+      key: `${dir}tables.json`,
+      body: JSON.stringify(list),
+    });
+    const v = store.objects.get(`${dir}version.json`)!;
+    const { files, ...record } = JSON.parse(v.body);
+    v.body = JSON.stringify({ ...record, tables: { ...files, path: "tables.json" } });
+  }
+  return store;
+};
+
 describe("expire", () => {
   it("takes the versions behind the newest out of retention", async () => {
     const store = await memory();
@@ -85,6 +112,13 @@ describe("expire", () => {
     expect(store.objects.has(`versions/${first}/version.json`)).toBe(true);
     // Already expired: nothing more to do
     expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([]);
+  });
+
+  it("deletes the tables.json of a version it takes out", async () => {
+    const store = withTables(await memory());
+    const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
+    expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([first]);
+    expect(store.objects.has(`versions/${first}/tables.json`)).toBe(false);
   });
 
   it("records who took the versions out and why", async () => {
@@ -231,39 +265,66 @@ describe("collect", () => {
     expect(store.objects.has(asset)).toBe(true);
   });
 
-  it("keeps assets while a live version's _fdl.files has rows", async () => {
-    const store = await memory();
+  it("keeps the assets the asset columns of a live version's tables.json hold", async () => {
+    const store = withTables(await memory());
     const head = await resolve(store);
-    const key = `versions/${head}/files.json`;
-    const files = JSON.parse(store.objects.get(key)!.body);
-    files.tables["_fdl.files"] = { files: [{ path: "_fdl/files/ducklake-f.parquet", rows: 1 }] };
-    await store.put(key, JSON.stringify(files));
-    await store.delete([`versions/${head}/dataset.json`]);
-    const asset = `assets/${"a".repeat(64)}`;
-    store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
-    expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(asset);
-    expect(store.objects.has(asset)).toBe(true);
+    const key = `versions/${head}/tables.json`;
+    const list = JSON.parse(store.objects.get(key)!.body);
+    list.tables["geo.town"].assets = ["name"];
+    await store.put(key, JSON.stringify(list));
+    const held = `assets/${"a".repeat(64)}`;
+    const unheld = `assets/${"b".repeat(64)}`;
+    for (const asset of [held, unheld])
+      store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
+    const deleted = await collect(store, {
+      graceMs: DAY,
+      now: NOW,
+      assetValues: async (_, { id }, table, columns) =>
+        id === head && table === "geo.town" && columns[0] === "name" ? ["a".repeat(64), null] : [],
+    });
+    expect(deleted).toContain(unheld);
+    expect(deleted).not.toContain(held);
+    expect(store.objects.has(held)).toBe(true);
   });
 
-  it("does not keep assets for _fdl.files whose rows are all deleted", async () => {
-    const store = await memory();
-    const head = await resolve(store);
-    const key = `versions/${head}/files.json`;
-    const files = JSON.parse(store.objects.get(key)!.body);
-    files.tables["_fdl.files"] = {
-      files: [
-        {
-          path: "_fdl/files/ducklake-f.parquet",
-          rows: 2,
-          deletes: { path: "_fdl/files/ducklake-f-delete.parquet", rows: 2 },
-        },
-      ],
-    };
-    await store.put(key, JSON.stringify(files));
-    await store.delete([...store.objects.keys()].filter((k) => k.endsWith("/dataset.json")));
+  it("deletes no asset while a live version's asset columns cannot be read", async () => {
+    const store = withTables(await memory());
+    const key = `versions/${await resolve(store)}/tables.json`;
+    const list = JSON.parse(store.objects.get(key)!.body);
+    list.tables["geo.town"].assets = ["name"];
+    await store.put(key, JSON.stringify(list));
     const asset = `assets/${"a".repeat(64)}`;
     store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
-    expect(await collect(store, { graceMs: DAY, now: NOW })).toContain(asset);
+    const deleted = await collect(store, {
+      graceMs: DAY,
+      now: NOW,
+      assetValues: async () => {
+        throw new Error("unavailable");
+      },
+    });
+    expect(deleted).not.toContain(asset);
+  });
+
+  it("reads the asset columns from the data files", async () => {
+    const store = fileStore(fixture);
+    const version = await readVersion(store, await resolve(store));
+    const rows = await Promise.all(
+      tableFiles(version, "geo.town")!.map(async (f) => readRows(await openParquet(store, f))),
+    );
+    expect(
+      await readAssetValues(store, { id: version.record.id, ...version }, "geo.town", ["name"]),
+    ).toEqual(rows.flat().map((r) => r.name));
+  });
+
+  it("deletes what no live version with tables.json reaches, without named", async () => {
+    const store = withTables(await memory());
+    const live = new Set(await dataKeys(store, await resolve(store)));
+    const file = "tables/main/towns/ducklake-unpushed.parquet";
+    store.objects.set(file, { key: file, uploaded: OLD, body: "" });
+    await expire(store, { keep: 1, graceMs: DAY, now: NOW });
+    const deleted = await collect(store, { graceMs: DAY, now: NOW });
+    expect(deleted).toContain(file);
+    expect(deleted.filter((key) => live.has(key))).toEqual([]);
   });
 
   it("keeps what a version pushed while it runs reaches", async () => {
@@ -324,7 +385,33 @@ describe("collect", () => {
   it("refuses when a live version has no files.json", async () => {
     const store = await memory();
     await store.delete([`versions/${await resolve(store)}/files.json`]);
-    await expect(collect(store, { graceMs: DAY, now: NOW })).rejects.toThrow(/no files.json/);
+    await expect(collect(store, { graceMs: DAY, now: NOW })).rejects.toThrow(
+      /no tables.json or files.json/,
+    );
+  });
+
+  it("refuses a live version whose record names tables.json without a path", async () => {
+    const store = await memory();
+    const key = `versions/${await resolve(store)}/version.json`;
+    const record = JSON.parse(store.objects.get(key)!.body);
+    await store.put(key, JSON.stringify({ ...record, tables: {} }));
+    await expect(collect(store, { graceMs: DAY, now: NOW })).rejects.toThrow(/outside/);
+  });
+
+  it("deletes the tables.json the record names when it takes a version out", async () => {
+    const store = withTables(await memory());
+    const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
+    const dir = `versions/${first}/`;
+    const record = JSON.parse(store.objects.get(`${dir}version.json`)!.body);
+    const listing = store.objects.get(`${dir}tables.json`)!;
+    store.objects.delete(`${dir}tables.json`);
+    store.objects.set(`${dir}tables-1.json`, { ...listing, key: `${dir}tables-1.json` });
+    await store.put(
+      `${dir}version.json`,
+      JSON.stringify({ ...record, tables: { ...record.tables, path: "tables-1.json" } }),
+    );
+    expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([first]);
+    expect(store.objects.has(`${dir}tables-1.json`)).toBe(false);
   });
 
   it("refuses a live version whose files.json path leaves its folder", async () => {

@@ -424,6 +424,20 @@ const mayHold = (condition: Condition, min: unknown, max: unknown): boolean => {
   );
 };
 
+const BOUNDS = new Set(["gt", "gte", "lt", "lte"]);
+
+/** Throws on a condition whose keys do not form one of the shapes of Condition */
+const checkCondition = (condition: Condition): void => {
+  if (typeof condition !== "object") return;
+  if (condition === null || Array.isArray(condition))
+    throw new Error("a condition is a value or an object such as { in: [...] }");
+  const keys = Object.keys(condition);
+  const ok =
+    (keys.length === 1 && (keys[0] === "in" || keys[0] === "prefix")) ||
+    keys.every((k) => BOUNDS.has(k));
+  if (!ok) throw new Error(`a condition takes in, prefix, or gt/gte/lt/lte: ${keys.join(", ")}`);
+};
+
 /** Whether a row's value matches the condition. Null matches nothing */
 const matches =
   (condition: Condition) =>
@@ -439,14 +453,19 @@ type Group = RowRange & { index: number };
 
 /** The row groups whose min/max for column can match the condition. Groups without statistics are kept */
 const groupsFor = (metadata: FileMetaData, column: string, condition: Condition): Group[] => {
-  const { index } = leafColumn(metadata, column);
+  checkCondition(condition);
+  const { index, element } = leafColumn(metadata, column);
+  // The deprecated min and max of byte arrays compare signed bytes, not code points
+  const legacy = element.type !== "BYTE_ARRAY" && element.type !== "FIXED_LEN_BYTE_ARRAY";
   const starts = metadata.row_groups.reduce<number[]>(
     (s, g) => [...s, s.at(-1)! + Number(g.num_rows)],
     [0],
   );
   return metadata.row_groups.flatMap((group, i) => {
     const stats = group.columns[index]?.meta_data?.statistics;
-    return mayHold(condition, stats?.min_value ?? stats?.min, stats?.max_value ?? stats?.max)
+    const min = stats?.min_value ?? (legacy ? stats?.min : undefined);
+    const max = stats?.max_value ?? (legacy ? stats?.max : undefined);
+    return mayHold(condition, min, max)
       ? [{ index: i, rowStart: starts[i]!, rowEnd: starts[i + 1]! }]
       : [];
   });
@@ -504,7 +523,10 @@ const bloomFiltered = async (
   groups: Group[],
 ): Promise<Group[]> => {
   const { index, element } = leafColumn(metadata, column);
-  const hashes = values.map((v) => hashParquetValue(v, element));
+  // -0 equals 0 but hashes differently, so look for both
+  const hashes = values
+    .flatMap((v) => (v === 0 ? [0, -0] : [v]))
+    .map((v) => hashParquetValue(v, element));
   if (hashes.some((h) => h === undefined)) return groups;
   const spans = groups.flatMap((g) => {
     const meta = metadata.row_groups[g.index]!.columns[index]?.meta_data;
@@ -524,7 +546,13 @@ const bloomFiltered = async (
   const absent = new Set(
     spans.flatMap(({ group, start, end }) => {
       const read = reads.find((r) => r.start <= start && end <= r.end)!;
-      const bloom = readBloomFilter({ view: read.view, offset: start - read.start });
+      // A bloom filter only saves reads: one that cannot be parsed keeps its group
+      let bloom: ReturnType<typeof readBloomFilter>;
+      try {
+        bloom = readBloomFilter({ view: read.view, offset: start - read.start });
+      } catch {
+        return [];
+      }
       return bloom && hashes.every((h) => !sbbfContains(bloom.blocks, h!)) ? [group] : [];
     }),
   );
@@ -602,6 +630,7 @@ export const readWhere = async <T = Record<string, unknown>>(
 ): Promise<T[]> => {
   const c = parquet.columns?.find((t) => t.name === column);
   if (parquet.columns && !c) throw new Error(`no column ${column}`);
+  checkCondition(condition);
   const match = matches(condition);
   const physical = c ? c.physical : column;
   // A column added after the file was written holds the same value in every row

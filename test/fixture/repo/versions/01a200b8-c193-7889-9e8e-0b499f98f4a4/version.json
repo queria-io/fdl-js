@@ -1,9 +1,9 @@
 {
   "fdl": "0.1",
-  "id": "01a1fff3-d831-7331-8703-c4f70862f9e9",
+  "id": "01a200b8-c193-7889-9e8e-0b499f98f4a4",
   "seq": 2,
-  "parents": ["01a1fff3-cb9e-79c8-bfb3-bf2b61ab8064"],
-  "created_at": "2026-11-21T21:12:13Z",
+  "parents": ["01a200b8-a5ae-7241-9fba-7723f8312cca"],
+  "created_at": "2026-11-22T00:47:18Z",
   "author": {
     "name": "test"
   },
@@ -11,27 +11,27 @@
   "metadata": {
     "path": "metadata.db",
     "storage": "duckdb-v1.5.0",
-    "bytes": 339968,
-    "sha256": "0f5fda9b1fc884da49949987840e3d9c18251600176d5d10acd339d2ca1d31fd"
+    "bytes": 356352,
+    "sha256": "cbc80f24683ca8bc896e1624855db3610f030c174bd944d6544f662ec2ddc898"
   },
   "dataset": {
     "path": "dataset.json",
-    "bytes": 2473,
-    "sha256": "d90a6d0deff74b3496ea5113cc3436e3dfffff859e4516fe91d9e67733ac4af4"
+    "bytes": 5140,
+    "sha256": "3d256f871ef3f6e3ade0a146dd8c6bb08ebf7b2191efe31b6af0fd172f3389dc"
   },
   "ducklake": {
     "format": "1.0",
-    "snapshot_id": 24,
-    "snapshots": [7, 24]
+    "snapshot_id": 31,
+    "snapshots": [7, 31]
   },
   "files": {
     "path": "files.json",
-    "bytes": 6787,
-    "sha256": "6828f42bee5e10306dda739b57e99d67df04ac0f276864dd480c8246dd08b64d"
+    "bytes": 11571,
+    "sha256": "59478e81cb7aeb74d872aa857a44f7ed23c6d75eed71e05e335779dd84e7b50a"
   },
   "diff": {
     "tables": {
-      "added": [],
+      "added": ["_fdl.attributes", "_fdl.catalogs", "_fdl.columns", "_fdl.dataset", "_fdl.tables"],
       "dropped": []
     },
     "rows": [
@@ -115,6 +115,7 @@
       }
     ],
     "data": ["main.gone", "main.nested", "main.renamed"],
+    "tags": [],
     "dataset": false
   },
   "annotations": {}

@@ -231,6 +231,41 @@ describe("collect", () => {
     expect(store.objects.has(asset)).toBe(true);
   });
 
+  it("keeps assets while a live version's _fdl.files has rows", async () => {
+    const store = await memory();
+    const head = await resolve(store);
+    const key = `versions/${head}/files.json`;
+    const files = JSON.parse(store.objects.get(key)!.body);
+    files.tables["_fdl.files"] = { files: [{ path: "_fdl/files/ducklake-f.parquet", rows: 1 }] };
+    await store.put(key, JSON.stringify(files));
+    await store.delete([`versions/${head}/dataset.json`]);
+    const asset = `assets/${"a".repeat(64)}`;
+    store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
+    expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(asset);
+    expect(store.objects.has(asset)).toBe(true);
+  });
+
+  it("does not keep assets for _fdl.files whose rows are all deleted", async () => {
+    const store = await memory();
+    const head = await resolve(store);
+    const key = `versions/${head}/files.json`;
+    const files = JSON.parse(store.objects.get(key)!.body);
+    files.tables["_fdl.files"] = {
+      files: [
+        {
+          path: "_fdl/files/ducklake-f.parquet",
+          rows: 2,
+          deletes: { path: "_fdl/files/ducklake-f-delete.parquet", rows: 2 },
+        },
+      ],
+    };
+    await store.put(key, JSON.stringify(files));
+    await store.delete([...store.objects.keys()].filter((k) => k.endsWith("/dataset.json")));
+    const asset = `assets/${"a".repeat(64)}`;
+    store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
+    expect(await collect(store, { graceMs: DAY, now: NOW })).toContain(asset);
+  });
+
   it("keeps what a version pushed while it runs reaches", async () => {
     const store = await memory();
     const head = await resolve(store);

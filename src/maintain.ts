@@ -274,8 +274,8 @@ export const expire = async (
 type FileList = {
   tables: {
     [table: string]: {
-      files: { path: string; deletes?: { path: string } }[];
-      /** The table's fdl.assets tag. Absent in files.json written before tags */
+      files: { path: string; rows?: number; deletes?: { path: string; rows?: number } }[];
+      /** The table's asset columns. Absent in files.json written before tags */
       assets?: string[];
     };
   };
@@ -293,8 +293,8 @@ const DATA_FILE = /(^|\/)ducklake-[^/]+\.parquet$/;
 
 /**
  * What a live version reaches: the data files its metadata names, its tree's files, whether rows
- * hold assets (a table with the fdl.assets tag in files.json, or, in a version written before tags,
- * a field with `asset: true` in dataset.json), and whether files.json names every data file (`named`). Without `named`, the
+ * hold assets (a table with assets in files.json, _fdl.files with rows, or, in a version written
+ * before tags, a field with `asset: true` in dataset.json), and whether files.json names every data file (`named`). Without `named`, the
  * files in `tables` are only those at the version's snapshot, and the metadata may name more
  */
 const reachedBy = async (store: Store, dataDir: string, id: string) => {
@@ -329,6 +329,10 @@ const reachedBy = async (store: Store, dataDir: string, id: string) => {
     ],
     assetRows:
       Object.values(list.tables).some((t) => (t.assets ?? []).length > 0) ||
+      // _fdl.files.sha256 is an asset column by the spec, whether or not files.json says so
+      (list.tables["_fdl.files"]?.files ?? []).some(
+        (f) => f.rows === undefined || f.rows > (f.deletes?.rows ?? 0),
+      ) ||
       fields.some((f) => f.asset === true),
     named: list.named !== undefined,
   };

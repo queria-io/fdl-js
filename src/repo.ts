@@ -47,12 +47,24 @@ export type FileList = {
       /** The table's columns, written from fdl-cli 0.24 */
       columns?: Column[];
       renamed_columns?: boolean;
-      /** The table's fdl.primary_key tag, when it has one */
+      /** The table's primary key in _fdl.tables (the fdl.primary_key tag before _fdl) */
       primary_key?: string[];
-      /** The table's fdl.assets tag, when it has one */
+      /** The table's columns marked asset in _fdl.columns (the fdl.assets tag before _fdl) */
       assets?: string[];
     }
   >;
+  /** Every view alive at the snapshot, keyed schema.view. Absent before writers listed views */
+  views?: Record<string, ViewEntry>;
+  /** _fdl.catalogs: the name each other repository the views read is attached under, to its URL */
+  catalogs?: Record<string, string>;
+};
+
+/** A view in files.json */
+export type ViewEntry = {
+  /** The view's SQL as the metadata records it */
+  sql: string;
+  /** The columns its query returns, with DuckDB's type names. Absent when the writer could not bind it */
+  columns?: { name: string; type: string }[];
 };
 
 /** One version of a repository, with its files.json */
@@ -192,8 +204,17 @@ export const open = async (store: Store, rev = "HEAD"): Promise<Version> => {
   return readVersion(store, id, config);
 };
 
-/** The names (schema.table) of the version's tables */
+/** The names (schema.table) of the version's tables, those of the _fdl schema among them */
 export const tableNames = (version: Version): string[] => Object.keys(version.files.tables);
+
+/** The names (schema.view) of the version's views. [] when files.json does not list views */
+export const viewNames = (version: Version): string[] => Object.keys(version.files.views ?? {});
+
+/** A view (schema.view): its SQL and columns, or undefined when files.json does not list it */
+export const viewOf = (version: Version, view: string): ViewEntry | undefined => {
+  const views = version.files.views;
+  return views && Object.hasOwn(views, view) ? views[view] : undefined;
+};
 
 /**
  * The data files of a table (schema.table), or undefined when the version has no such table.
@@ -202,7 +223,8 @@ export const tableNames = (version: Version): string[] => Object.keys(version.fi
  * whose files.json has no columns (written before fdl-cli 0.24): its old files carry old names
  */
 export const tableFiles = (version: Version, table: string): DataFile[] | undefined => {
-  const entry = version.files.tables[table];
+  const { tables } = version.files;
+  const entry = Object.hasOwn(tables, table) ? tables[table] : undefined;
   if (!entry) return undefined;
   if (entry.renamed_columns && !entry.columns)
     throw new FdlError(`${table} has renamed columns, and files.json does not list its columns`);

@@ -5,11 +5,14 @@ import {
   open,
   readVersion,
   refreshing,
+  viewNames,
+  viewOf,
   resolve,
   tableFiles,
   tableNames,
 } from "../src/repo.js";
 import type { Store } from "../src/store.js";
+import { readFdlSchema } from "../src/fdl-schema.js";
 
 const store = fileStore(new URL("./fixture/repo/", import.meta.url).pathname);
 
@@ -38,6 +41,11 @@ describe("open", () => {
     const version = await open(store);
     expect(version.record.seq).toBe(2);
     expect(tableNames(version).sort()).toEqual([
+      "_fdl.attributes",
+      "_fdl.catalogs",
+      "_fdl.columns",
+      "_fdl.dataset",
+      "_fdl.tables",
       "geo.town",
       "main.empty",
       "main.gone",
@@ -129,6 +137,73 @@ describe("readVersion", () => {
     await expect(open(patched({ "fdl.json": '{"fdl":"0.1","data_dir":"../x/"}' }))).rejects.toThrow(
       /not a folder under the root/,
     );
+  });
+});
+
+describe("views", () => {
+  const view = {
+    sql: "SELECT lg_code, count(*) AS towns FROM geo.town GROUP BY lg_code",
+    columns: [
+      { name: "lg_code", type: "VARCHAR" },
+      { name: "towns", type: "BIGINT" },
+    ],
+  };
+
+  it("lists the views of files.json with their SQL and columns", async () => {
+    const version = await open(store);
+    const listed = { ...version, files: { ...version.files, views: { "main.town_count": view } } };
+    expect(viewNames(listed)).toEqual(["main.town_count"]);
+    expect(viewOf(listed, "main.town_count")).toEqual(view);
+    expect(viewOf(listed, "main.none")).toBeUndefined();
+    expect(viewOf(listed, "constructor")).toBeUndefined();
+    expect(viewOf(listed, "__proto__")).toBeUndefined();
+    expect(tableFiles(listed, "constructor")).toBeUndefined();
+  });
+
+  it("gives no views when files.json does not list them", async () => {
+    const version = await open(store);
+    expect(viewNames({ ...version, files: { tables: {} } })).toEqual([]);
+  });
+});
+
+describe("readFdlSchema", () => {
+  it("reads the rows of the _fdl tables, with null for columns a table lacks", async () => {
+    const fdl = await readFdlSchema(store, await open(store));
+    expect(fdl.dataset).toMatchObject({ title: "Towns", description: null, language: null });
+    expect(fdl.dataset!.issued).toEqual(new Date("2020-01-02"));
+    expect(fdl.dataset!.licenses).toEqual([{ id: "cc-by-4.0", spdx: "CC-BY-4.0" }]);
+    expect(fdl.tables.map((t) => [t.schema, t.name, t.primary_key, t.profile])).toEqual([
+      ["geo", "town", ["n"], null],
+      ["main", "town_count", null, false],
+    ]);
+    expect(fdl.columns).toEqual([
+      {
+        schema: "geo",
+        table: "town",
+        name: "lg_code",
+        title: "Code",
+        description: null,
+        asset: null,
+      },
+    ]);
+    expect(fdl.catalogs).toEqual([{ name: "census", url: "https://example.org/census/" }]);
+    expect(fdl.attributes).toEqual([
+      { schema: "geo", table: "town", column: "lg_code", key: "example-entity", value: "lg_code" },
+    ]);
+    expect(fdl).toMatchObject({ schemas: [], files: [] });
+  });
+
+  it("reads no rows from a version without _fdl", async () => {
+    const { first } = await versions();
+    expect(await readFdlSchema(store, await readVersion(store, first))).toEqual({
+      dataset: undefined,
+      schemas: [],
+      tables: [],
+      columns: [],
+      files: [],
+      catalogs: [],
+      attributes: [],
+    });
   });
 });
 

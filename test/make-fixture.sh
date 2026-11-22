@@ -58,6 +58,21 @@ ALTER TABLE lake.main.nested ADD COLUMN bl BLOB DEFAULT '\\x01B'::BLOB;
 ALTER TABLE lake.main.nested ADD COLUMN h HUGEINT DEFAULT 3;
 ALTER TABLE lake.main.nested ADD COLUMN js JSON DEFAULT '{\"a\":1}';
 INSERT INTO lake.main.nested (id, s, l, m) VALUES (2, {'a2': 3, 'b': 'y', 'c': 4}, [{'p2': 5}], MAP {'j': {'q2': 6}});
+USE lake;
+CREATE VIEW main.town_count AS SELECT lg_code, count(*) AS towns FROM geo.town GROUP BY lg_code;
+CREATE SCHEMA _fdl;
+CREATE TABLE _fdl.dataset AS SELECT 'Towns' AS title, DATE '2020-01-02' AS issued,
+  [{'id': 'cc-by-4.0', 'spdx': 'CC-BY-4.0'}] AS licenses;
+CREATE TABLE _fdl.tables AS SELECT * FROM (VALUES
+  ('geo', 'town', 'Towns', ['n'], NULL::BOOLEAN),
+  ('main', 'town_count', 'Towns by code', NULL, false)
+) t(schema, name, title, primary_key, profile);
+CREATE TABLE _fdl.columns AS SELECT * FROM (VALUES
+  ('geo', 'town', 'lg_code', 'Code')
+) t(schema, \"table\", name, title);
+CREATE TABLE _fdl.attributes AS SELECT 'geo' AS schema, 'town' AS \"table\", 'lg_code' AS \"column\",
+  'example-entity' AS key, '\"lg_code\"'::JSON AS value;
+CREATE TABLE _fdl.catalogs AS SELECT 'census' AS name, 'https://example.org/census/' AS url;
 "
 $FDL commit work/lake.sqlite -m "Second" --author test --dataset work/dataset.json
 $FDL push work/lake.sqlite

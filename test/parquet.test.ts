@@ -235,3 +235,95 @@ describe("tables changed after their files were written", () => {
     await expect(readRows(parquet)).rejects.toThrow(FdlError);
   });
 });
+
+describe("conditions", () => {
+  // 5 row groups of 2,048 rows. kind is a or z in every group, and b to f in one group each, in that order
+  const kinds = async (reads?: number[]) => {
+    const key = "kinds.parquet";
+    const fixture = fileStore(new URL("./fixture/", import.meta.url).pathname);
+    const bytes = await fixture.size(key);
+    return openParquet(
+      fixture,
+      { key, rows: 10_240, bytes: bytes! },
+      {
+        onRead: (b) => reads?.push(b),
+      },
+    );
+  };
+  type Kind = { n: bigint; kind: string; addr: string };
+  const ns = (rows: Kind[]) => rows.map((r) => Number(r.n));
+
+  it("reads a range from the row groups that can hold it", async () => {
+    const { metadata } = await kinds();
+    expect(rowRangesFor(metadata, "n", { gte: 2048, lt: 4096 })).toEqual([
+      { rowStart: 2048, rowEnd: 4096 },
+    ]);
+    expect(rowRangesFor(metadata, "n", { gt: 10_239 })).toEqual([]);
+    const rows = await readWhere<Kind>(await kinds(), "n", { gte: 4000, lte: 4100 }, ["kind"]);
+    expect(ns(rows)).toEqual(Array.from({ length: 101 }, (_, i) => 4000 + i));
+  });
+
+  it("reads the values of IN", async () => {
+    const parquet = await kinds();
+    expect(rowRangesFor(parquet.metadata, "n", { in: [1, 9000] })).toEqual([
+      { rowStart: 0, rowEnd: 2048 },
+      { rowStart: 8192, rowEnd: 10_240 },
+    ]);
+    expect(ns(await readWhere<Kind>(parquet, "n", { in: [1, 9000n, 20_000] }))).toEqual([1, 9000]);
+  });
+
+  it("reads a prefix, comparing in code point order", async () => {
+    const parquet = await kinds();
+    // 大 < 東 < 神 in code point order
+    expect(rowRangesFor(parquet.metadata, "addr", { prefix: "東京都" })).toEqual([
+      { rowStart: 4096, rowEnd: 8192 },
+    ]);
+    expect(rowRangesFor(parquet.metadata, "addr", { prefix: "東京都0" })).toEqual([
+      { rowStart: 4096, rowEnd: 8192 },
+    ]);
+    expect(rowRangesFor(parquet.metadata, "addr", { prefix: "京都" })).toEqual([]);
+    const rows = await readWhere<Kind>(parquet, "addr", { prefix: "東京都0410" });
+    expect(rows.map((r) => r.addr)).toEqual(Array.from({ length: 10 }, (_, i) => `東京都0410${i}`));
+  });
+
+  it("skips the row groups whose bloom filter lacks every value", async () => {
+    const reads: number[] = [];
+    const parquet = await kinds(reads);
+    // min/max (a to z) keep every group
+    expect(rowRangesFor(parquet.metadata, "kind", "c")).toHaveLength(1);
+    expect(rowRangesFor(parquet.metadata, "kind", "c")[0]).toEqual({ rowStart: 0, rowEnd: 10_240 });
+    reads.length = 0;
+    const rows = await readWhere<Kind>(parquet, "kind", "c", ["n"]);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => Number(r.n) >= 2048 && Number(r.n) < 4096)).toBe(true);
+    // The five bloom filters in one read, then the one row group
+    expect(reads[0]).toBe(5 * 47);
+    const bf = ns(await readWhere<Kind>(parquet, "kind", { in: ["b", "f"] }, ["n"]));
+    expect(new Set(bf.map((n) => Math.floor(n / 2048)))).toEqual(new Set([0, 4]));
+  });
+
+  it("reads nothing of the data when no bloom filter holds the value", async () => {
+    const reads: number[] = [];
+    const parquet = await kinds(reads);
+    reads.length = 0;
+    expect(await readWhere(parquet, "kind", "y")).toEqual([]);
+    expect(reads).toEqual([5 * 47]);
+  });
+
+  it("matches a condition against a column added after the file was written", async () => {
+    const version = await open(store);
+    const entry = version.files.tables["main.renamed"]!;
+    const columns = [
+      entry.columns![0]!,
+      { id: 2, name: "c", type: "varchar", nullable: true, default: "none" },
+    ];
+    const [first] = tableFiles(version, "main.renamed")!;
+    const parquet = await openParquet(store, { ...first!, columns });
+    expect(await readWhere(parquet, "c", { prefix: "no" })).toHaveLength(10);
+    expect(await readWhere(parquet, "c", { in: ["x", "y"] })).toEqual([]);
+    expect(await readWhere(parquet, "b", { gte: 8 })).toEqual([
+      { b: 8n, c: "none" },
+      { b: 9n, c: "none" },
+    ]);
+  });
+});

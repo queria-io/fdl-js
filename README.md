@@ -24,7 +24,15 @@ const parquet = await openParquet(store, file);
 const rows = await readWhere(parquet, "lg_code", "131016", ["name"]);
 ```
 
-`readWhere` reads only the row groups whose min/max can hold the value, so it reads little from files sorted by that column.
+`readWhere` reads only the row groups whose min/max can hold the value, so it reads little from files sorted by that column. Besides a value, it takes a condition:
+
+```ts
+await readWhere(parquet, "lg_code", { in: ["131016", "131024"] });
+await readWhere(parquet, "population", { gte: 1000, lt: 5000 }); // >=, >, <=, < and BETWEEN
+await readWhere(parquet, "address", { prefix: "東京都千代田区" }); // LIKE '東京都千代田区%'
+```
+
+Strings compare in code point order, as Parquet's statistics do, and null matches nothing. For a value or `in`, when min/max leaves more than one row group, `readWhere` also reads the columns' bloom filters (in one request when they are next to each other, as DuckDB writes them) and leaves out the row groups whose filter holds none of the values. DuckDB writes bloom filters only for dictionary-encoded columns, so they help on columns with repeated values that sit in a few row groups, and on values a file does not hold at all.
 
 ## Views and declarations
 

@@ -154,6 +154,9 @@ describe("views", () => {
     expect(viewNames(listed)).toEqual(["main.town_count"]);
     expect(viewOf(listed, "main.town_count")).toEqual(view);
     expect(viewOf(listed, "main.none")).toBeUndefined();
+    expect(viewOf(listed, "constructor")).toBeUndefined();
+    expect(viewOf(listed, "__proto__")).toBeUndefined();
+    expect(tableFiles(listed, "constructor")).toBeUndefined();
   });
 
   it("gives no views when files.json does not list them", async () => {

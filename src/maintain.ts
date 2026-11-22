@@ -274,7 +274,7 @@ export const expire = async (
 type FileList = {
   tables: {
     [table: string]: {
-      files: { path: string; rows?: number; deletes?: { path: string } }[];
+      files: { path: string; rows?: number; deletes?: { path: string; rows?: number } }[];
       /** The table's asset columns. Absent in files.json written before tags */
       assets?: string[];
     };
@@ -330,7 +330,9 @@ const reachedBy = async (store: Store, dataDir: string, id: string) => {
     assetRows:
       Object.values(list.tables).some((t) => (t.assets ?? []).length > 0) ||
       // _fdl.files.sha256 is an asset column by the spec, whether or not files.json says so
-      (list.tables["_fdl.files"]?.files ?? []).some((f) => f.rows !== 0) ||
+      (list.tables["_fdl.files"]?.files ?? []).some(
+        (f) => f.rows === undefined || f.rows > (f.deletes?.rows ?? 0),
+      ) ||
       fields.some((f) => f.asset === true),
     named: list.named !== undefined,
   };

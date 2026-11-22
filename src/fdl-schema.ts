@@ -4,18 +4,20 @@ import { openParquet, readRows, type OpenOptions } from "./parquet.js";
 import { tableFiles, type Version } from "./repo.js";
 import type { Store } from "./store.js";
 
+// Struct fields are read as the file holds them: a field the writer left out of the struct is
+// absent, not null
 export type License = {
-  id: string | null;
-  spdx: string | null;
-  url: string | null;
-  title: string | null;
-  commercial_use: boolean | null;
-  share_alike: boolean | null;
-  attribution_required: boolean | null;
+  id?: string | null;
+  spdx?: string | null;
+  url?: string | null;
+  title?: string | null;
+  commercial_use?: boolean | null;
+  share_alike?: boolean | null;
+  attribution_required?: boolean | null;
 };
-export type Source = { title: string | null; path: string | null };
-export type Contributor = Source & { roles: string[] | null };
-export type TemporalCoverage = { start: string | null; end: string | null };
+export type Source = { title?: string | null; path?: string | null };
+export type Contributor = Source & { roles?: string[] | null };
+export type TemporalCoverage = { start?: string | null; end?: string | null };
 
 /** What the dataset as a whole means */
 export type DatasetDoc = {

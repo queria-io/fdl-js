@@ -211,8 +211,10 @@ export const tableNames = (version: Version): string[] => Object.keys(version.fi
 export const viewNames = (version: Version): string[] => Object.keys(version.files.views ?? {});
 
 /** A view (schema.view): its SQL and columns, or undefined when files.json does not list it */
-export const viewOf = (version: Version, view: string): ViewEntry | undefined =>
-  version.files.views?.[view];
+export const viewOf = (version: Version, view: string): ViewEntry | undefined => {
+  const views = version.files.views;
+  return views && Object.hasOwn(views, view) ? views[view] : undefined;
+};
 
 /**
  * The data files of a table (schema.table), or undefined when the version has no such table.
@@ -221,7 +223,8 @@ export const viewOf = (version: Version, view: string): ViewEntry | undefined =>
  * whose files.json has no columns (written before fdl-cli 0.24): its old files carry old names
  */
 export const tableFiles = (version: Version, table: string): DataFile[] | undefined => {
-  const entry = version.files.tables[table];
+  const { tables } = version.files;
+  const entry = Object.hasOwn(tables, table) ? tables[table] : undefined;
   if (!entry) return undefined;
   if (entry.renamed_columns && !entry.columns)
     throw new FdlError(`${table} has renamed columns, and files.json does not list its columns`);

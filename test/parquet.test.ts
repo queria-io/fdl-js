@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fileStore } from "../src/node.js";
 import {
+  type Condition,
   memoryFooterCache,
   openParquet,
   readRows,
@@ -308,6 +309,15 @@ describe("conditions", () => {
     reads.length = 0;
     expect(await readWhere(parquet, "kind", "y")).toEqual([]);
     expect(reads).toEqual([5 * 47]);
+  });
+
+  it("rejects a condition that mixes or misspells its keys", async () => {
+    const parquet = await kinds();
+    const bad = [{ in: ["a"], gte: "b" }, { prefix: "a", lt: "b" }, { eq: "a" }, ["a"], null];
+    for (const c of bad)
+      await expect(readWhere(parquet, "kind", c as unknown as Condition)).rejects.toThrow(
+        /condition/,
+      );
   });
 
   it("matches a condition against a column added after the file was written", async () => {

@@ -12,7 +12,7 @@ importers:
         specifier: ^0.1.1
         version: 0.1.1
       hyparquet:
-        specifier: ^1.32.0
+        specifier: ~1.32.0
         version: 1.32.0
     devDependencies:
       '@cloudflare/workers-types':

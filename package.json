@@ -44,7 +44,7 @@
   },
   "dependencies": {
     "fzstd": "^0.1.1",
-    "hyparquet": "^1.32.0"
+    "hyparquet": "~1.32.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261101.1",

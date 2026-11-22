@@ -236,7 +236,10 @@ export const viewOf = (version: Version, view: string): ViewEntry | undefined =>
  * deleted rows and find renamed columns by field_id. Throws for a table with renamed columns
  * whose files.json has no columns (written before fdl-cli 0.24): its old files carry old names
  */
-export const tableFiles = (version: Version, table: string): DataFile[] | undefined => {
+export const tableFiles = (
+  version: Pick<Version, "config" | "files">,
+  table: string,
+): DataFile[] | undefined => {
   const { tables } = version.files;
   const entry = Object.hasOwn(tables, table) ? tables[table] : undefined;
   if (!entry) return undefined;

@@ -51,7 +51,7 @@ Each retries a failed request once. A store is three functions (`text`, `size`, 
 
 ## Retention
 
-For the host of a repository: `expire(store, { keep, graceMs })` takes versions out of retention as `fdl expire` does, keeping the newest `keep` on each branch, the versions refs point at, their merge bases with main, and those made within the grace period, and `collect(store, { graceMs })` deletes the data files and tree files (`objects/`) no live version reaches once past the grace period, as `fdl gc` does. Both read `tables.json` (or `files.json`) and never open a catalog. Assets are deleted only while no live version's rows hold assets.
+For the host of a repository: `expire(store, { keep, graceMs })` takes versions out of retention as `fdl expire` does, keeping the newest `keep` on each branch, the versions refs point at, their merge bases with main, and those made within the grace period, and `collect(store, { graceMs })` deletes the data files and assets no live version reaches once past the grace period, as `fdl gc` does. Both read `tables.json` (or `files.json`) and never open a catalog. The assets a version reaches are read from the asset columns its `tables.json` declares, in its data files; pass `assetValues` to read them another way. While a live version's assets cannot be read, or it has `files.json` and declares asset columns, no asset is deleted.
 
 ```ts
 const store = r2MaintainedStore(env.BUCKET, "towns/");

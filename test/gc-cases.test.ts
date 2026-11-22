@@ -8,6 +8,8 @@ type Case = {
   name: string;
   files: Record<string, unknown>;
   objects: Record<string, string>;
+  /** The tables of each metadata file, by its key, with their rows */
+  metadata?: Record<string, Record<string, { rows: Record<string, unknown>[] }>>;
   deleted: string[];
 };
 const { now, grace_seconds, cases } = JSON.parse(
@@ -44,9 +46,16 @@ describe("gc cases", () => {
     it(c.name, async () => {
       const s = store(c);
       // Stopping with an error is how an implementation deletes nothing
-      const deleted = await collect(s, { graceMs: grace_seconds * 1000, now: new Date(now) }).catch(
-        () => [],
-      );
+      const deleted = await collect(s, {
+        graceMs: grace_seconds * 1000,
+        now: new Date(now),
+        // The rows come from the case's metadata, which only DuckDB can open
+        assetValues: async (_, { id }, table, columns) => {
+          const tables = c.metadata?.[`versions/${id}/metadata.db`];
+          if (!tables) throw new Error(`no metadata for ${id}`);
+          return (tables[table]?.rows ?? []).flatMap((row) => columns.map((col) => row[col]));
+        },
+      }).catch(() => []);
       expect([...deleted].sort()).toEqual([...c.deleted].sort());
       expect(
         Object.keys(c.objects)

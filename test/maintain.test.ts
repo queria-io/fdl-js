@@ -1,8 +1,16 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { collect, expire, type MaintainedStore, type Placed } from "../src/maintain.js";
-import { readVersion, resolve, tableNames } from "../src/repo.js";
+import {
+  collect,
+  expire,
+  type MaintainedStore,
+  type Placed,
+  readAssetValues,
+} from "../src/maintain.js";
+import { fileStore } from "../src/node.js";
+import { openParquet, readRows } from "../src/parquet.js";
+import { readVersion, resolve, tableFiles, tableNames } from "../src/repo.js";
 
 const fixture = new URL("./fixture/repo/", import.meta.url).pathname;
 const OLD = new Date("2026-01-01T00:00:00Z");
@@ -257,18 +265,55 @@ describe("collect", () => {
     expect(store.objects.has(asset)).toBe(true);
   });
 
-  it("keeps assets while a live version's tables.json names asset columns", async () => {
+  it("keeps the assets the asset columns of a live version's tables.json hold", async () => {
     const store = withTables(await memory());
     const head = await resolve(store);
     const key = `versions/${head}/tables.json`;
     const list = JSON.parse(store.objects.get(key)!.body);
-    list.tables["geo.town"].assets = ["pdf"];
+    list.tables["geo.town"].assets = ["name"];
     await store.put(key, JSON.stringify(list));
-    await store.delete([...store.objects.keys()].filter((k) => k.endsWith("/dataset.json")));
+    const held = `assets/${"a".repeat(64)}`;
+    const unheld = `assets/${"b".repeat(64)}`;
+    for (const asset of [held, unheld])
+      store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
+    const deleted = await collect(store, {
+      graceMs: DAY,
+      now: NOW,
+      assetValues: async (_, { id }, table, columns) =>
+        id === head && table === "geo.town" && columns[0] === "name" ? ["a".repeat(64), null] : [],
+    });
+    expect(deleted).toContain(unheld);
+    expect(deleted).not.toContain(held);
+    expect(store.objects.has(held)).toBe(true);
+  });
+
+  it("deletes no asset while a live version's asset columns cannot be read", async () => {
+    const store = withTables(await memory());
+    const key = `versions/${await resolve(store)}/tables.json`;
+    const list = JSON.parse(store.objects.get(key)!.body);
+    list.tables["geo.town"].assets = ["name"];
+    await store.put(key, JSON.stringify(list));
     const asset = `assets/${"a".repeat(64)}`;
     store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
-    expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(asset);
-    expect(store.objects.has(asset)).toBe(true);
+    const deleted = await collect(store, {
+      graceMs: DAY,
+      now: NOW,
+      assetValues: async () => {
+        throw new Error("unavailable");
+      },
+    });
+    expect(deleted).not.toContain(asset);
+  });
+
+  it("reads the asset columns from the data files", async () => {
+    const store = fileStore(fixture);
+    const version = await readVersion(store, await resolve(store));
+    const rows = await Promise.all(
+      tableFiles(version, "geo.town")!.map(async (f) => readRows(await openParquet(store, f))),
+    );
+    expect(
+      await readAssetValues(store, { id: version.record.id, ...version }, "geo.town", ["name"]),
+    ).toEqual(rows.flat().map((r) => r.name));
   });
 
   it("deletes what no live version with tables.json reaches, without named", async () => {

@@ -11,9 +11,6 @@ export type License = {
   spdx?: string | null;
   url?: string | null;
   title?: string | null;
-  commercial_use?: boolean | null;
-  share_alike?: boolean | null;
-  attribution_required?: boolean | null;
 };
 export type Source = { title?: string | null; path?: string | null };
 export type Contributor = Source & { roles?: string[] | null };
@@ -48,8 +45,6 @@ export type TableDoc = {
   profile: boolean | null;
   sql: string | null;
   depends_on: string[] | null;
-  materialized: string | null;
-  source_path: string | null;
 };
 export type ColumnDoc = {
   schema: string;
@@ -57,7 +52,6 @@ export type ColumnDoc = {
   name: string;
   title: string | null;
   description: string | null;
-  entity: string | null;
   asset: boolean | null;
 };
 /** A file of the dataset, stored as the asset assets/<sha256> */
@@ -116,10 +110,8 @@ const COLUMNS = {
     "profile",
     "sql",
     "depends_on",
-    "materialized",
-    "source_path",
   ],
-  columns: ["schema", "table", "name", "title", "description", "entity", "asset"],
+  columns: ["schema", "table", "name", "title", "description", "asset"],
   files: ["path", "sha256", "bytes", "media_type"],
   catalogs: ["name", "url"],
   attributes: ["schema", "table", "column", "key", "value"],

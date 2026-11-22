@@ -30,7 +30,7 @@ const rows = await readWhere(parquet, "lg_code", "131016", ["name"]);
 
 `viewNames(version)` lists the views in `files.json`, and `viewOf(version, "main.town_count")` gives a view's `sql` and the `columns` its query returns, with DuckDB's type names. `files.json` written before views were listed has none.
 
-`readFdlSchema(store, version)` reads the tables of the [`_fdl` schema](https://fdl.queria.io/spec/fdl-schema): `dataset` (one row or `undefined`), `schemas`, `tables`, `columns`, `files`, `catalogs` and `attributes`. A table the version lacks reads as no rows, and a column it lacks as `null`. The primary keys and asset columns are also in `files.json` (`primary_key`, `assets`), for versions written before `_fdl` too.
+`readFdlSchema(store, version)` reads the tables of the [`_fdl` schema](https://fdl.queria.io/spec/fdl-schema): `dataset` (one row or `undefined`), `schemas`, `tables`, `columns`, `files`, `catalogs` and `attributes`. A table the version lacks reads as no rows, and a column it lacks as `null`. An attribute's `value` is parsed from JSON. The primary keys and asset columns are also in `files.json` (`primary_key`, `assets`), for versions written before `_fdl` too.
 
 ## Stores
 

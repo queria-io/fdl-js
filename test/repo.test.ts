@@ -41,6 +41,7 @@ describe("open", () => {
     const version = await open(store);
     expect(version.record.seq).toBe(2);
     expect(tableNames(version).sort()).toEqual([
+      "_fdl.attributes",
       "_fdl.catalogs",
       "_fdl.columns",
       "_fdl.dataset",
@@ -170,9 +171,7 @@ describe("readFdlSchema", () => {
     const fdl = await readFdlSchema(store, await open(store));
     expect(fdl.dataset).toMatchObject({ title: "Towns", description: null, language: null });
     expect(fdl.dataset!.issued).toEqual(new Date("2020-01-02"));
-    expect(fdl.dataset!.licenses).toEqual([
-      { id: "cc-by-4.0", spdx: "CC-BY-4.0", commercial_use: true },
-    ]);
+    expect(fdl.dataset!.licenses).toEqual([{ id: "cc-by-4.0", spdx: "CC-BY-4.0" }]);
     expect(fdl.tables.map((t) => [t.schema, t.name, t.primary_key, t.profile])).toEqual([
       ["geo", "town", ["n"], null],
       ["main", "town_count", null, false],
@@ -184,12 +183,14 @@ describe("readFdlSchema", () => {
         name: "lg_code",
         title: "Code",
         description: null,
-        entity: "lg_code",
         asset: null,
       },
     ]);
     expect(fdl.catalogs).toEqual([{ name: "census", url: "https://example.org/census/" }]);
-    expect(fdl).toMatchObject({ schemas: [], files: [], attributes: [] });
+    expect(fdl.attributes).toEqual([
+      { schema: "geo", table: "town", column: "lg_code", key: "example-entity", value: "lg_code" },
+    ]);
+    expect(fdl).toMatchObject({ schemas: [], files: [] });
   });
 
   it("reads no rows from a version without _fdl", async () => {

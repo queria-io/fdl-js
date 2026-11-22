@@ -4,6 +4,38 @@
   "tables": [
     {
       "schema": "_fdl",
+      "name": "attributes",
+      "rows": 1,
+      "fields": [
+        {
+          "name": "schema",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "table",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "column",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "key",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "value",
+          "type": "json",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "schema": "_fdl",
       "name": "catalogs",
       "rows": 1,
       "fields": [
@@ -41,11 +73,6 @@
         },
         {
           "name": "title",
-          "type": "varchar",
-          "nullable": true
-        },
-        {
-          "name": "entity",
           "type": "varchar",
           "nullable": true
         }

@@ -168,7 +168,7 @@ describe("views", () => {
 describe("readFdlSchema", () => {
   it("reads the rows of the _fdl tables, with null for columns a table lacks", async () => {
     const fdl = await readFdlSchema(store, await open(store));
-    expect(fdl.dataset).toMatchObject({ title: "Towns", description: null, keywords: null });
+    expect(fdl.dataset).toMatchObject({ title: "Towns", description: null, language: null });
     expect(fdl.dataset!.issued).toEqual(new Date("2020-01-02"));
     expect(fdl.dataset!.licenses).toEqual([
       { id: "cc-by-4.0", spdx: "CC-BY-4.0", commercial_use: true },

@@ -24,7 +24,6 @@ export type DatasetDoc = {
   title: string | null;
   description: string | null;
   language: string | null;
-  keywords: string[] | null;
   homepage: string | null;
   issued: Date | null;
   update_frequency: string | null;
@@ -41,7 +40,6 @@ export type TableDoc = {
   name: string;
   title: string | null;
   description: string | null;
-  keywords: string[] | null;
   licenses: License[] | null;
   sources: Source[] | null;
   temporal_coverage: TemporalCoverage | null;
@@ -95,7 +93,6 @@ const COLUMNS = {
     "title",
     "description",
     "language",
-    "keywords",
     "homepage",
     "issued",
     "update_frequency",
@@ -111,7 +108,6 @@ const COLUMNS = {
     "name",
     "title",
     "description",
-    "keywords",
     "licenses",
     "sources",
     "temporal_coverage",

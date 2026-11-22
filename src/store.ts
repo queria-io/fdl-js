@@ -1,7 +1,7 @@
-// Where a repository is read from. Keys are the layout's paths relative to the root
+// Where a dataset is read from. Keys are the layout's paths relative to the root
 // (fdl.json, refs/heads/main, versions/<ID>/version.json, data/...)
 
-/** A read-only view of a repository's root */
+/** A read-only view of a dataset's root */
 export type Store = {
   /** The object as text, or null when it is missing */
   text: (key: string) => Promise<string | null>;
@@ -29,7 +29,7 @@ export type R2Like = {
   head: (key: string) => Promise<{ size: number } | null>;
 };
 
-/** A repository in an R2 bucket (a Workers binding), under prefix (ending in "/", or "") */
+/** A dataset in an R2 bucket (a Workers binding), under prefix (ending in "/", or "") */
 export const r2Store = (bucket: R2Like, prefix = ""): Store => ({
   text: async (key) => {
     const o = await retryOnce(() => bucket.get(prefix + key));
@@ -49,11 +49,11 @@ export type HttpOptions = {
   headers?: Record<string, string>;
 };
 
-// HEAD, refs and expired.json change; everything else in a repository never does
+// HEAD, refs and expired.json change; everything else in a dataset never does
 const mutable = (key: string) =>
   key === "HEAD" || key === "refs.json" || key.startsWith("refs/") || key.endsWith("/expired.json");
 
-/** A repository served over HTTP at root (ending in "/") */
+/** A dataset served over HTTP at root (ending in "/") */
 export const httpStore = (
   root: string,
   { fetch: f = fetch, headers = {} }: HttpOptions = {},

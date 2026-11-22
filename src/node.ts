@@ -1,11 +1,11 @@
-// A repository in a local folder, for Node and other runtimes with node:fs
+// A dataset in a local folder, for Node and other runtimes with node:fs
 import { open, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { NotFoundError, type Store } from "./store.js";
 
 const missing = (e: unknown) => (e as { code?: string }).code === "ENOENT";
 
-/** A repository in the folder dir */
+/** A dataset in the folder dir */
 export const fileStore = (dir: string): Store => ({
   text: (key) =>
     readFile(join(dir, key), "utf8").catch((e) => (missing(e) ? null : Promise.reject(e))),

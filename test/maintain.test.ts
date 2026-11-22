@@ -268,6 +268,7 @@ describe("collect", () => {
     const asset = `assets/${"a".repeat(64)}`;
     store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
     expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(asset);
+    expect(store.objects.has(asset)).toBe(true);
   });
 
   it("deletes what no live version with tables.json reaches, without named", async () => {
@@ -342,6 +343,30 @@ describe("collect", () => {
     await expect(collect(store, { graceMs: DAY, now: NOW })).rejects.toThrow(
       /no tables.json or files.json/,
     );
+  });
+
+  it("refuses a live version whose record names tables.json without a path", async () => {
+    const store = await memory();
+    const key = `versions/${await resolve(store)}/version.json`;
+    const record = JSON.parse(store.objects.get(key)!.body);
+    await store.put(key, JSON.stringify({ ...record, tables: {} }));
+    await expect(collect(store, { graceMs: DAY, now: NOW })).rejects.toThrow(/outside/);
+  });
+
+  it("deletes the tables.json the record names when it takes a version out", async () => {
+    const store = withTables(await memory());
+    const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
+    const dir = `versions/${first}/`;
+    const record = JSON.parse(store.objects.get(`${dir}version.json`)!.body);
+    const listing = store.objects.get(`${dir}tables.json`)!;
+    store.objects.delete(`${dir}tables.json`);
+    store.objects.set(`${dir}tables-1.json`, { ...listing, key: `${dir}tables-1.json` });
+    await store.put(
+      `${dir}version.json`,
+      JSON.stringify({ ...record, tables: { ...record.tables, path: "tables-1.json" } }),
+    );
+    expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([first]);
+    expect(store.objects.has(`${dir}tables-1.json`)).toBe(false);
   });
 
   it("refuses a live version whose files.json path leaves its folder", async () => {

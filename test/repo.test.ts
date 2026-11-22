@@ -214,6 +214,16 @@ describe("tables.json", () => {
       readVersion(patched({ [dir + "version.json"]: JSON.stringify(record) }), second),
     ).rejects.toThrow(/outside/);
   });
+
+  it("refuses a version.json whose tables names no file, without falling back to files.json", async () => {
+    const { second } = await versions();
+    const dir = `versions/${second}/`;
+    const record = JSON.parse((await store.text(dir + "version.json"))!);
+    record.tables = { bytes: 0, sha256: "" };
+    await expect(
+      readVersion(patched({ [dir + "version.json"]: JSON.stringify(record) }), second),
+    ).rejects.toThrow(/outside/);
+  });
 });
 
 describe("refreshing", () => {

@@ -72,8 +72,8 @@ type Head = {
   id: string;
   parents: string[];
   created_at: string;
-  tables?: { path: string };
-  files?: { path: string };
+  tables?: { path?: unknown };
+  files?: { path?: unknown };
   tree?: { path: string };
   dataset?: { path: string };
   /** The metadata file. Records written by fdl 0.26 and earlier name it `catalog` */
@@ -192,6 +192,12 @@ const expireOne = async (
 ) => {
   const dir = `versions/${id}/`;
   const metadata = new Set(metadataPaths(head).map((path) => dir + path));
+  // tables.json or files.json, by the name the record gives and by the default names
+  const listings = new Set(
+    ["tables.json", "files.json", ...[head.tables?.path, head.files?.path].filter(isFileName)].map(
+      (path) => dir + path,
+    ),
+  );
   if (!(await isExpired(store, id)))
     await store.put(
       `${dir}expired.json`,
@@ -202,8 +208,7 @@ const expireOne = async (
     .filter(
       (key) =>
         metadata.has(key) ||
-        key === `${dir}tables.json` ||
-        key === `${dir}files.json` ||
+        listings.has(key) ||
         key === `${dir}dataset.json` ||
         key === `${dir}tree.json` ||
         key.startsWith(`${dir}metadata/`) ||
@@ -310,8 +315,13 @@ const reachedBy = async (store: Store, dataDir: string, id: string) => {
     if (!isFileName(value)) throw new FdlError(`version ${id} names a file outside it: ${value}`);
     return dir + value;
   };
+  // A record that names tables.json is read from it alone, since only tables.json lists every
+  // data file the version reaches
+  const listing =
+    current?.tables !== undefined ? current.tables.path : (current?.files?.path ?? "files.json");
+  if (!isFileName(listing)) throw new FdlError(`version ${id} names a file outside it: ${listing}`);
   const [files, described, tree] = await Promise.all([
-    store.text(name(current?.tables?.path ?? current?.files?.path, "files.json")),
+    store.text(dir + listing),
     store.text(name(current?.dataset?.path, "dataset.json")),
     store.text(name(current?.tree?.path, "tree.json")),
   ]);
@@ -360,9 +370,10 @@ export type CollectOptions = {
 /**
  * Deletes the data files, assets and tree files no live version reaches, written longer ago than the grace
  * period, as `fdl gc` does. These are files only expired versions reached, and files working
- * metadata files wrote and never pushed. A version reaches every data file its metadata names, listed
- * in `named` of its files.json; while a live version's files.json lacks `named`, no data file is
- * deleted. Assets are kept while a live version's rows hold assets,
+ * metadata files wrote and never pushed. A version reaches every data file its metadata names: those
+ * in `tables` of its tables.json, or in `named` of an earlier version's files.json; while a live
+ * version's files.json lacks `named`, no data file is deleted. Assets are kept while a live
+ * version's rows hold assets,
  * since reading those rows needs the metadata. The objects are listed before the versions are
  * read, and the versions are listed again just before deleting, so a version pushed meanwhile
  * keeps what it reaches. Returns the keys deleted
@@ -394,7 +405,7 @@ export const collect = async (
     placed.filter((p) => p.uploaded.getTime() < before && !kept.has(p.key)).map((p) => p.key);
   const planned = () =>
     [
-      // A live version whose files.json lacks `named` may reach data files no files.json lists
+      // A live version whose files.json lacks `named` may reach data files no listing names
       ...(unnamed ? [] : old(data).filter((key) => DATA_FILE.test(key.slice(dataDir.length)))),
       ...(assetRows ? [] : old(assets).filter((key) => ASSET.test(key))),
       ...old(trees).filter((key) => TREE_FILE.test(key)),

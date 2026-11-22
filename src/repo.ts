@@ -32,7 +32,7 @@ export type FileEntry = {
   footer_bytes?: number;
   deletes?: { path: string; rows: number; bytes: number };
 };
-/** A column of a table in files.json. id is the field_id DuckLake writes in every data file */
+/** A column of a table in tables.json. id is the field_id DuckLake writes in every data file */
 export type Column = {
   id: number;
   name: string;
@@ -69,9 +69,9 @@ export type FileList = {
 /** Another dataset a view reads: the URL of its root and, when pinned, the version to read */
 export type Dependency = { url: string; version?: string };
 
-/** A view in files.json */
+/** A view in tables.json */
 export type ViewEntry = {
-  /** The view's SQL as the metadata records it */
+  /** The view's SQL as the metadata records it, with DuckLake's `{DUCKLAKE_CATALOG}.` removed */
   sql: string;
   /** The columns its query returns, with DuckDB's type names */
   columns?: { name: string; type: string }[];
@@ -82,7 +82,7 @@ export type ViewEntry = {
 /** One version of a repository, with its tables.json (files.json in earlier versions) */
 export type Version = { config: Config; record: VersionRecord; files: FileList };
 
-/** A data file to read: its key in the store, rows and sizes from files.json */
+/** A data file to read: its key in the store, rows and sizes from tables.json */
 export type DataFile = {
   key: string;
   rows: number;
@@ -202,7 +202,8 @@ export const readVersion = async (store: Store, id: string, config?: Config): Pr
   const record = JSON.parse(text) as VersionRecord;
   if (record.id !== id) throw new FdlError(`${dir}version.json holds ${record.id}`);
   checkMajor(String(record.fdl), `version ${id}`);
-  const filesPath = record.tables?.path ?? record.files?.path ?? "files.json";
+  const filesPath =
+    record.tables !== undefined ? record.tables.path : (record.files?.path ?? "files.json");
   if (!isFileName(filesPath))
     throw new FdlError(`version ${id} names a file outside it: ${filesPath}`);
   const files = await store.text(dir + filesPath);

@@ -1,4 +1,4 @@
-// Retention for a repository's host, following https://fdl.queria.io/spec/data-files:
+// Retention for a dataset's host, following https://fdl.queria.io/spec/data-files:
 // take older versions out of retention (as `fdl expire` does) and delete the data files no
 // live version reaches once past the grace period (as `fdl gc` does). Metadata files are never
 // opened: what a version reaches comes from its tables.json, or `named` in an earlier version's
@@ -47,7 +47,7 @@ const chunks = <T>(items: T[], size: number): T[][] =>
   );
 
 /**
- * A repository in an R2 bucket that maintenance may change. Reads go through `reader`, which
+ * A dataset in an R2 bucket that maintenance may change. Reads go through `reader`, which
  * defaults to `r2Store(bucket, prefix)`; pass another one (with a cache, say) for the same place
  */
 export const r2MaintainedStore = (

@@ -79,7 +79,7 @@ export type ViewEntry = {
   profile?: boolean;
 };
 
-/** One version of a repository, with its tables.json (files.json in earlier versions) */
+/** One version of a dataset, with its tables.json (files.json in earlier versions) */
 export type Version = { config: Config; record: VersionRecord; files: FileList };
 
 /** A data file to read: its key in the store, rows and sizes from tables.json */
@@ -145,7 +145,7 @@ export const isDataDir = (value: unknown): value is string =>
 
 export const readConfig = async (store: Store): Promise<Config> => {
   const raw = await json<Partial<Config>>(store, "fdl.json");
-  checkMajor(String(raw.fdl), "the repository");
+  checkMajor(String(raw.fdl), "the dataset");
   const dataDir: unknown = "data_dir" in raw ? raw.data_dir : "tables/";
   if (!isDataDir(dataDir))
     throw new FdlError(`data_dir is not a folder under the root: ${JSON.stringify(dataDir)}`);
@@ -246,7 +246,7 @@ export const tableFiles = (
   if (entry.renamed_columns && !entry.columns)
     throw new FdlError(`${table} has renamed columns, and files.json does not list its columns`);
   const key = (path: string) => {
-    if (!safe(path)) throw new FdlError(`${table} names a file outside the repository: ${path}`);
+    if (!safe(path)) throw new FdlError(`${table} names a file outside the dataset: ${path}`);
     return version.config.data_dir + path;
   };
   return entry.files.map((f) => ({

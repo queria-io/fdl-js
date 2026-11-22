@@ -1,7 +1,7 @@
 {
   "name": "@queria-io/fdl-js",
   "version": "0.0.0-semantic-release",
-  "description": "Read DuckLake tables published as FDL repositories, without DuckDB: resolve refs, list a version's files and read Parquet by range",
+  "description": "Read DuckLake tables published as FDL datasets, without DuckDB: resolve refs, list a version's files and read Parquet by range",
   "keywords": [
     "cloudflare-workers",
     "ducklake",

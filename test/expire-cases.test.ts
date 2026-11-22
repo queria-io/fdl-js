@@ -1,5 +1,5 @@
-// The retention cases every implementation of the FDL spec agrees on. test/cases/retention.json
-// is a copy of cases/retention.json in queria-io/fdl: update it from there, never by hand
+// The expire cases every implementation of the FDL spec agrees on. test/cases/expire.json
+// is a copy of cases/expire.json in queria-io/fdl: update it from there, never by hand
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { expire, type MaintainedStore } from "../src/maintain.js";
@@ -14,7 +14,7 @@ type Case = {
   take_out: string[];
 };
 const { now, grace_seconds, record, cases } = JSON.parse(
-  await readFile(new URL("./cases/retention.json", import.meta.url), "utf8"),
+  await readFile(new URL("./cases/expire.json", import.meta.url), "utf8"),
 ) as { now: string; grace_seconds: number; record: object; cases: Case[] };
 
 const store = (c: Case): MaintainedStore => {
@@ -49,7 +49,7 @@ const store = (c: Case): MaintainedStore => {
   };
 };
 
-describe("retention cases", () => {
+describe("expire cases", () => {
   for (const c of cases) {
     it(c.name, async () => {
       const taken = await expire(store(c), {

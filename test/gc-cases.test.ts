@@ -1,5 +1,5 @@
-// The collection cases every implementation of the FDL spec agrees on. test/cases/collection.json
-// is a copy of cases/collection.json in queria-io/fdl: update it from there, never by hand
+// The gc cases every implementation of the FDL spec agrees on. test/cases/gc.json
+// is a copy of cases/gc.json in queria-io/fdl: update it from there, never by hand
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { collect, type MaintainedStore, type Placed } from "../src/maintain.js";
@@ -11,7 +11,7 @@ type Case = {
   deleted: string[];
 };
 const { now, grace_seconds, cases } = JSON.parse(
-  await readFile(new URL("./cases/collection.json", import.meta.url), "utf8"),
+  await readFile(new URL("./cases/gc.json", import.meta.url), "utf8"),
 ) as { now: string; grace_seconds: number; cases: Case[] };
 
 const store = (c: Case): MaintainedStore & { keys: () => string[] } => {
@@ -39,7 +39,7 @@ const store = (c: Case): MaintainedStore & { keys: () => string[] } => {
   };
 };
 
-describe("collection cases", () => {
+describe("gc cases", () => {
   for (const c of cases) {
     it(c.name, async () => {
       const s = store(c);

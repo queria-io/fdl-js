@@ -204,13 +204,13 @@ describe("collect", () => {
     for (const key of live) expect(store.objects.has(key)).toBe(true);
   });
 
-  it("keeps assets while a live version's rows hold assets", async () => {
+  it("keeps assets while a live version written before tags has asset fields in dataset.json", async () => {
     const store = await memory();
     const head = await resolve(store);
-    const key = `versions/${head}/dataset.json`;
-    const described = JSON.parse(store.objects.get(key)!.body);
-    described.tables[0].fields[0].asset = true;
-    await store.put(key, JSON.stringify(described));
+    const described = {
+      tables: [{ schema: "main", name: "t", fields: [{ name: "pdf", asset: true }] }],
+    };
+    await store.put(`versions/${head}/dataset.json`, JSON.stringify(described));
     const asset = `assets/${"a".repeat(64)}`;
     store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
     expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(asset);
@@ -224,7 +224,6 @@ describe("collect", () => {
     const files = JSON.parse(store.objects.get(key)!.body);
     for (const table of Object.values<{ assets?: string[] }>(files.tables)) table.assets = ["pdf"];
     await store.put(key, JSON.stringify(files));
-    await store.delete([`versions/${head}/dataset.json`]);
     const asset = `assets/${"a".repeat(64)}`;
     store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
     expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(asset);
@@ -238,7 +237,6 @@ describe("collect", () => {
     const files = JSON.parse(store.objects.get(key)!.body);
     files.tables["_fdl.files"] = { files: [{ path: "_fdl/files/ducklake-f.parquet", rows: 1 }] };
     await store.put(key, JSON.stringify(files));
-    await store.delete([`versions/${head}/dataset.json`]);
     const asset = `assets/${"a".repeat(64)}`;
     store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
     expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(asset);
@@ -260,7 +258,6 @@ describe("collect", () => {
       ],
     };
     await store.put(key, JSON.stringify(files));
-    await store.delete([...store.objects.keys()].filter((k) => k.endsWith("/dataset.json")));
     const asset = `assets/${"a".repeat(64)}`;
     store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
     expect(await collect(store, { graceMs: DAY, now: NOW })).toContain(asset);

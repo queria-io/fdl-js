@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds test/fixture/repo with the fdl CLI (https://github.com/queria-io/fdl).
-# Usage: FDL="uvx --from fdl-cli fdl" test/make-fixture.sh
+# Usage: FDL="uvx --from fdl-cli fdl" test/make-fixture.sh (fdl-cli with the _fdl schema)
 # PYTHON is a Python with duckdb, such as the fdl-cli tool environment
 set -euo pipefail
 cd "$(dirname "$0")/fixture"
@@ -20,9 +20,6 @@ con.execute(sys.argv[2])
 con.execute(sys.argv[1])
 PY
 }
-cat > work/dataset.json <<'JSON'
-{ "name": "towns", "title": "Towns" }
-JSON
 sql "
 CALL ducklake_set_option('lake', 'parquet_row_group_size', 2048);
 CALL ducklake_set_option('lake', 'parquet_compression', 'zstd');
@@ -36,7 +33,7 @@ CREATE TABLE lake.main.empty (x INTEGER);
 CREATE TABLE lake.main.nested AS
   SELECT 1 AS id, {'a': 1, 'b': 'x'} AS s, [{'p': 1}] AS l, MAP {'k': {'q': 2}} AS m;
 "
-$FDL commit work/lake.sqlite -m "First" --author test --dataset work/dataset.json
+$FDL commit work/lake.sqlite -m "First" --author test
 $FDL push work/lake.sqlite
 rm work/lake.sqlite*
 sql "
@@ -74,9 +71,9 @@ CREATE TABLE _fdl.attributes AS SELECT 'geo' AS schema, 'town' AS \"table\", 'lg
   'example-entity' AS key, '\"lg_code\"'::JSON AS value;
 CREATE TABLE _fdl.catalogs AS SELECT 'census' AS name, 'https://example.org/census/' AS url;
 "
-$FDL commit work/lake.sqlite -m "Second" --author test --dataset work/dataset.json
+$FDL commit work/lake.sqlite -m "Second" --author test
 $FDL push work/lake.sqlite
 rm work/lake.sqlite*
-rm -rf work dataset.json
+rm -rf work
 # The reader never opens the metadata or the profiles; leave them out to keep the fixture small
 rm -r repo/versions/*/metadata.db repo/versions/*/profiles

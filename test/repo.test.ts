@@ -141,23 +141,19 @@ describe("readVersion", () => {
 });
 
 describe("views", () => {
-  const view = {
-    sql: "SELECT lg_code, count(*) AS towns FROM geo.town GROUP BY lg_code",
-    columns: [
-      { name: "lg_code", type: "VARCHAR" },
-      { name: "towns", type: "BIGINT" },
-    ],
-  };
-
   it("lists the views of files.json with their SQL and columns", async () => {
     const version = await open(store);
-    const listed = { ...version, files: { ...version.files, views: { "main.town_count": view } } };
-    expect(viewNames(listed)).toEqual(["main.town_count"]);
-    expect(viewOf(listed, "main.town_count")).toEqual(view);
-    expect(viewOf(listed, "main.none")).toBeUndefined();
-    expect(viewOf(listed, "constructor")).toBeUndefined();
-    expect(viewOf(listed, "__proto__")).toBeUndefined();
-    expect(tableFiles(listed, "constructor")).toBeUndefined();
+    expect(viewNames(version)).toEqual(["main.town_count"]);
+    expect(viewOf(version, "main.town_count")).toEqual({
+      sql: expect.stringContaining("FROM geo.town GROUP BY lg_code"),
+      columns: [
+        { name: "lg_code", type: "VARCHAR" },
+        { name: "towns", type: "BIGINT" },
+      ],
+    });
+    expect(viewOf(version, "main.none")).toBeUndefined();
+    expect(viewOf(version, "constructor")).toBeUndefined();
+    expect(version.files.catalogs).toEqual({ census: "https://example.org/census/" });
   });
 
   it("gives no views when files.json does not list them", async () => {

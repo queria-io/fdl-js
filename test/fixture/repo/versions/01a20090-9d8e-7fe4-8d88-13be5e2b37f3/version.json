@@ -1,9 +1,9 @@
 {
   "fdl": "0.1",
-  "id": "01a1fff3-cb9e-79c8-bfb3-bf2b61ab8064",
+  "id": "01a20090-9d8e-7fe4-8d88-13be5e2b37f3",
   "seq": 1,
   "parents": [],
-  "created_at": "2026-11-21T21:12:10Z",
+  "created_at": "2026-11-22T00:03:27Z",
   "author": {
     "name": "test"
   },
@@ -12,7 +12,7 @@
     "path": "metadata.db",
     "storage": "duckdb-v1.5.0",
     "bytes": 290816,
-    "sha256": "f9e6b7adfb478d5ba250bd9bcd14abefb685072cecd441eccb4ce319ee095ce3"
+    "sha256": "e4d51a17984293061fc0dfa8c7cbb33b082eb6a7cf829ee499167605331524b9"
   },
   "dataset": {
     "path": "dataset.json",
@@ -27,7 +27,7 @@
   "files": {
     "path": "files.json",
     "bytes": 3880,
-    "sha256": "f1d4e04589630f6a6b0d55260b1a2262147063b40e1e5aa0d88668a9920ee6d2"
+    "sha256": "25b20eab4c8e0901ec3cc17176ab2cab419c19b347fb7a4f601836431788a27e"
   },
   "diff": {
     "tables": {

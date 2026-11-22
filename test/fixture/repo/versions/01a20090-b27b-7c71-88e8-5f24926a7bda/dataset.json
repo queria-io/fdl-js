@@ -3,6 +3,109 @@
   "title": "Towns",
   "tables": [
     {
+      "schema": "_fdl",
+      "name": "catalogs",
+      "rows": 1,
+      "fields": [
+        {
+          "name": "name",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "url",
+          "type": "varchar",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "schema": "_fdl",
+      "name": "columns",
+      "rows": 1,
+      "fields": [
+        {
+          "name": "schema",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "table",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "title",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "entity",
+          "type": "varchar",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "schema": "_fdl",
+      "name": "dataset",
+      "rows": 1,
+      "fields": [
+        {
+          "name": "title",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "issued",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "licenses",
+          "type": "list",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "schema": "_fdl",
+      "name": "tables",
+      "rows": 2,
+      "fields": [
+        {
+          "name": "schema",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "title",
+          "type": "varchar",
+          "nullable": true
+        },
+        {
+          "name": "primary_key",
+          "type": "list",
+          "nullable": true
+        },
+        {
+          "name": "profile",
+          "type": "boolean",
+          "nullable": true
+        }
+      ]
+    },
+    {
       "schema": "geo",
       "name": "town",
       "rows": 10000,
@@ -131,6 +234,12 @@
           "nullable": true
         }
       ]
+    },
+    {
+      "schema": "main",
+      "name": "town_count",
+      "kind": "view",
+      "sql": "SELECT lg_code, count_star() AS towns FROM geo.town GROUP BY lg_code"
     }
   ]
 }

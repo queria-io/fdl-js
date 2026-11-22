@@ -63,11 +63,11 @@ export type FileList = {
   /** Every view alive at the snapshot, keyed schema.view. files.json has none */
   views?: Record<string, ViewEntry>;
   /** Each other dataset the views read, keyed by the name their SQL reads it under */
-  datasets?: Record<string, DatasetRef>;
+  dependencies?: Record<string, Dependency>;
 };
 
 /** Another dataset a view reads: the URL of its root and, when pinned, the version to read */
-export type DatasetRef = { url: string; version?: string };
+export type Dependency = { url: string; version?: string };
 
 /** A view in files.json */
 export type ViewEntry = {

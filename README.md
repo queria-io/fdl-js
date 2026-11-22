@@ -30,7 +30,7 @@ const rows = await readWhere(parquet, "lg_code", "131016", ["name"]);
 
 `viewNames(version)` lists the views in `tables.json`, and `viewOf(version, "main.town_count")` gives a view's `sql` and the `columns` its query returns, with DuckDB's type names. A version with `files.json` has none.
 
-`version.files` is the version's `tables.json`. Each table there declares its `primary_key`, its asset columns (`assets`) and `profile: false` when the writer makes no profile for it, and a view may declare `profile: false` too. `datasets` gives each other dataset the views read, keyed by the name their SQL reads it under: its `url` and, when pinned, the `version` to read. Descriptions of the dataset live in its own tables, which read like any other table.
+`version.files` is the version's `tables.json`. Each table there declares its `primary_key`, its asset columns (`assets`) and `profile: false` when the writer makes no profile for it, and a view may declare `profile: false` too. `dependencies` gives each other dataset the views read, keyed by the name their SQL reads it under: its `url` and, when pinned, the `version` to read. Descriptions of the dataset live in its own tables, which read like any other table.
 
 ## Stores
 

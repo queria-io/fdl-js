@@ -185,7 +185,7 @@ describe("tables.json", () => {
       "main.raw": { files: [], profile: false },
     },
     views: { "main.town_count": { sql: "SELECT 1 AS n", profile: false } },
-    datasets: {
+    dependencies: {
       census: {
         url: "https://example.org/census/",
         version: "01a20000-0000-7000-8000-000000000000",
@@ -193,7 +193,7 @@ describe("tables.json", () => {
     },
   };
 
-  it("reads tables.json with its declarations, views and datasets", async () => {
+  it("reads tables.json with its declarations, views and dependencies", async () => {
     const version = await withTables(list);
     expect(tableNames(version).sort()).toEqual(["geo.town", "main.raw"]);
     expect(version.files.tables["geo.town"]).toMatchObject({
@@ -202,7 +202,7 @@ describe("tables.json", () => {
     });
     expect(version.files.tables["main.raw"]!.profile).toBe(false);
     expect(viewOf(version, "main.town_count")).toEqual({ sql: "SELECT 1 AS n", profile: false });
-    expect(version.files.datasets).toEqual(list.datasets);
+    expect(version.files.dependencies).toEqual(list.dependencies);
   });
 
   it("refuses a version.json that names tables.json outside the version", async () => {

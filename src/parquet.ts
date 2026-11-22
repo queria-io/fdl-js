@@ -8,6 +8,7 @@ import {
   parquetMetadata,
   parquetReadObjects,
 } from "hyparquet";
+import { hashParquetValue, readBloomFilter, sbbfContains } from "hyparquet/src/bloom.js";
 import { type Column, type DataFile, FdlError } from "./repo.js";
 import type { Store } from "./store.js";
 
@@ -339,14 +340,24 @@ export const openParquet = async (
 export type RowRange = { rowStart: number; rowEnd: number };
 type Value = string | number | bigint;
 
-/** The index in a row group's columns of a top-level leaf column. schema[0] is the root */
-const columnIndex = (metadata: FileMetaData, column: string): number => {
+/**
+ * What readWhere matches a column against: a value (=), `{ in: [...] }` (IN), bounds such as
+ * `{ gte: a, lte: b }` (>=, >, <=, <, BETWEEN) or `{ prefix: "xxx" }` (LIKE 'xxx%')
+ */
+export type Condition =
+  | Value
+  | { in: readonly Value[] }
+  | { gt?: Value; gte?: Value; lt?: Value; lte?: Value }
+  | { prefix: string };
+
+/** A top-level leaf column: its index in a row group's columns and its schema element */
+const leafColumn = (metadata: FileMetaData, column: string) => {
   let leaf = 0;
   let i = 1;
   while (i < metadata.schema.length) {
     const s = metadata.schema[i]!;
     if (!s.num_children) {
-      if (s.name === column) return leaf;
+      if (s.name === column) return { index: leaf, element: s };
       leaf++;
       i++;
       continue;
@@ -386,29 +397,138 @@ const within = (value: Value, min: unknown, max: unknown) =>
   (min === undefined || min === null || atMost(min as Value, value)) &&
   (max === undefined || max === null || atMost(value, max as Value));
 
+const known = (v: unknown): v is Value => v !== undefined && v !== null;
+const below = (a: Value, b: Value) => !atMost(b, a);
+
 /**
- * The rows of the row groups whose min/max for column can hold value. Row groups without
- * statistics are kept. Adjacent row groups are merged into one range
+ * Whether values between min and max can match the condition. A bound the statistics lack
+ * (undefined or null) can hold anything
  */
-export const rowRangesFor = (metadata: FileMetaData, column: string, value: Value): RowRange[] => {
-  const c = columnIndex(metadata, column);
-  return metadata.row_groups.reduce<{ start: number; ranges: RowRange[] }>(
-    ({ start, ranges }, group) => {
-      const end = start + Number(group.num_rows);
-      const stats = group.columns[c]?.meta_data?.statistics;
-      if (!within(value, stats?.min_value ?? stats?.min, stats?.max_value ?? stats?.max))
-        return { start: end, ranges };
-      const last = ranges.at(-1);
-      return {
-        start: end,
-        ranges:
-          last?.rowEnd === start
-            ? [...ranges.slice(0, -1), { rowStart: last.rowStart, rowEnd: end }]
-            : [...ranges, { rowStart: start, rowEnd: end }],
-      };
-    },
-    { start: 0, ranges: [] },
-  ).ranges;
+const mayHold = (condition: Condition, min: unknown, max: unknown): boolean => {
+  if (typeof condition !== "object") return within(condition, min, max);
+  if ("in" in condition) return condition.in.some((v) => within(v, min, max));
+  if ("prefix" in condition) {
+    // The strings with a prefix sort together, from the prefix itself on
+    const p = condition.prefix;
+    return (
+      (!known(max) || atMost(p, max)) &&
+      (!known(min) || atMost(min, p) || (typeof min === "string" && min.startsWith(p)))
+    );
+  }
+  const { gt, gte, lt, lte } = condition;
+  return (
+    (gt === undefined || !known(max) || below(gt, max)) &&
+    (gte === undefined || !known(max) || atMost(gte, max)) &&
+    (lt === undefined || !known(min) || below(min, lt)) &&
+    (lte === undefined || !known(min) || atMost(min, lte))
+  );
+};
+
+/** Whether a row's value matches the condition. Null matches nothing */
+const matches =
+  (condition: Condition) =>
+  (v: unknown): boolean => {
+    if (!known(v)) return false;
+    if (typeof condition !== "object") return same(v, condition);
+    if ("in" in condition) return condition.in.some((c) => same(v, c));
+    if ("prefix" in condition) return typeof v === "string" && v.startsWith(condition.prefix);
+    return mayHold(condition, v, v);
+  };
+
+type Group = RowRange & { index: number };
+
+/** The row groups whose min/max for column can match the condition. Groups without statistics are kept */
+const groupsFor = (metadata: FileMetaData, column: string, condition: Condition): Group[] => {
+  const { index } = leafColumn(metadata, column);
+  const starts = metadata.row_groups.reduce<number[]>(
+    (s, g) => [...s, s.at(-1)! + Number(g.num_rows)],
+    [0],
+  );
+  return metadata.row_groups.flatMap((group, i) => {
+    const stats = group.columns[index]?.meta_data?.statistics;
+    return mayHold(condition, stats?.min_value ?? stats?.min, stats?.max_value ?? stats?.max)
+      ? [{ index: i, rowStart: starts[i]!, rowEnd: starts[i + 1]! }]
+      : [];
+  });
+};
+
+/** Row ranges with adjacent ones merged into one */
+const merged = (ranges: RowRange[]): RowRange[] =>
+  ranges.reduce<RowRange[]>((out, { rowStart, rowEnd }) => {
+    const last = out.at(-1);
+    return last?.rowEnd === rowStart
+      ? [...out.slice(0, -1), { rowStart: last.rowStart, rowEnd }]
+      : [...out, { rowStart, rowEnd }];
+  }, []);
+
+/**
+ * The rows of the row groups whose min/max for column can match the condition. Row groups
+ * without statistics are kept. Adjacent row groups are merged into one range
+ */
+export const rowRangesFor = (
+  metadata: FileMetaData,
+  column: string,
+  condition: Condition,
+): RowRange[] => merged(groupsFor(metadata, column, condition));
+
+/** The values an equality condition (= or IN) asks for */
+const equalTo = (condition: Condition): readonly Value[] | undefined =>
+  typeof condition !== "object" ? [condition] : "in" in condition ? condition.in : undefined;
+
+/** Bloom filters closer together than this are read in one request */
+const GAP = 64 * 1024;
+
+type Span = { start: number; end: number };
+
+/** Byte spans sorted and joined where the gap between them is at most GAP */
+const coalesced = (spans: Span[]): Span[] =>
+  [...spans]
+    .sort((a, b) => a.start - b.start)
+    .reduce<Span[]>((out, s) => {
+      const last = out.at(-1);
+      return last && s.start - last.end <= GAP
+        ? [...out.slice(0, -1), { start: last.start, end: Math.max(last.end, s.end) }]
+        : [...out, s];
+    }, []);
+
+/**
+ * Leaves out the row groups whose bloom filter for column holds none of the values. A bloom
+ * filter can only tell that a value is absent, so groups without one, and values it cannot hash
+ * for the column's type, keep every group. DuckDB writes bloom filters for dictionary-encoded
+ * columns, next to each other before the footer, so they are usually one read
+ */
+const bloomFiltered = async (
+  { file, metadata }: ParquetFile,
+  column: string,
+  values: readonly Value[],
+  groups: Group[],
+): Promise<Group[]> => {
+  const { index, element } = leafColumn(metadata, column);
+  const hashes = values.map((v) => hashParquetValue(v, element));
+  if (hashes.some((h) => h === undefined)) return groups;
+  const spans = groups.flatMap((g) => {
+    const meta = metadata.row_groups[g.index]!.columns[index]?.meta_data;
+    const offset = meta?.bloom_filter_offset;
+    const length = meta?.bloom_filter_length;
+    return offset !== undefined && length
+      ? [{ group: g.index, start: Number(offset), end: Number(offset) + length }]
+      : [];
+  });
+  if (spans.length === 0) return groups;
+  const reads = await Promise.all(
+    coalesced(spans).map(async (r) => ({
+      ...r,
+      view: new DataView(await file.slice(r.start, r.end)),
+    })),
+  );
+  const absent = new Set(
+    spans.flatMap(({ group, start, end }) => {
+      const read = reads.find((r) => r.start <= start && end <= r.end)!;
+      const bloom = readBloomFilter({ view: read.view, offset: start - read.start });
+      return bloom && hashes.every((h) => !sbbfContains(bloom.blocks, h!)) ? [group] : [];
+    }),
+  );
+  return groups.filter((g) => !absent.has(g.index));
 };
 
 /**
@@ -468,28 +588,37 @@ const same = (a: unknown, b: Value) =>
     a == b);
 
 /**
- * The rows where column equals value. Reads only the row groups that can hold it, then drops
- * the other rows. Works best on files sorted by column
+ * The rows where column matches the condition: a value, `{ in: [...] }`, bounds such as
+ * `{ gte: a, lt: b }`, or `{ prefix: "xxx" }`. Reads only the row groups whose min/max can match,
+ * and for = and IN, when more than one row group is left, also leaves out those whose bloom
+ * filter holds none of the values. Then drops the other rows. Strings compare in code point
+ * order, as Parquet's statistics do. Works best on files sorted by column
  */
 export const readWhere = async <T = Record<string, unknown>>(
   parquet: ParquetFile,
   column: string,
-  value: Value,
+  condition: Condition,
   columns?: string[],
 ): Promise<T[]> => {
   const c = parquet.columns?.find((t) => t.name === column);
   if (parquet.columns && !c) throw new Error(`no column ${column}`);
+  const match = matches(condition);
+  const physical = c ? c.physical : column;
   // A column added after the file was written holds the same value in every row
-  if (c && c.physical === undefined && !same(c.fill(), value)) return [];
-  const ranges =
-    c && c.physical === undefined
-      ? [{ rowStart: 0, rowEnd: Number(parquet.metadata.num_rows) }]
-      : rowRangesFor(parquet.metadata, c?.physical ?? column, value);
+  if (physical === undefined && !match(c!.fill())) return [];
+  const ranges = await (async () => {
+    if (physical === undefined) return [{ rowStart: 0, rowEnd: Number(parquet.metadata.num_rows) }];
+    const groups = groupsFor(parquet.metadata, physical, condition);
+    const values = equalTo(condition);
+    return merged(
+      values && groups.length > 1 ? await bloomFiltered(parquet, physical, values, groups) : groups,
+    );
+  })();
   const wanted = columns && [column, ...columns.filter((c) => c !== column)];
   const rows = await Promise.all(
     ranges.map((r) =>
       readRows<Record<string, unknown>>(parquet, { ...r, ...(wanted ? { columns: wanted } : {}) }),
     ),
   );
-  return rows.flat().filter((row) => same(row[column], value)) as T[];
+  return rows.flat().filter((row) => match(row[column])) as T[];
 };

@@ -67,3 +67,16 @@ rm work/lake.sqlite*
 rm -rf work dataset.json
 # The reader never opens the metadata or the profiles; leave them out to keep the fixture small
 rm -r repo/versions/*/metadata.db repo/versions/*/profiles
+# A plain Parquet file for the row group filters: kind is not sorted, so only its bloom filter
+# tells the groups apart; addr is sorted, in code point order
+${PYTHON:-python} - <<'PY'
+import duckdb
+duckdb.connect().execute("""
+COPY (
+  SELECT i AS n,
+    CASE WHEN i % 2 = 0 THEN 'a' WHEN i % 3 = 0 THEN 'z' ELSE chr((98 + i // 2048)::INTEGER) END AS kind,
+    CASE WHEN i < 4096 THEN '大阪府' WHEN i < 8192 THEN '東京都' ELSE '神奈川県' END || printf('%05d', i) AS addr
+  FROM range(10240) t(i) ORDER BY i
+) TO 'kinds.parquet' (ROW_GROUP_SIZE 2048, COMPRESSION zstd)
+""")
+PY

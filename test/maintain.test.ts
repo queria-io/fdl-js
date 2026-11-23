@@ -239,7 +239,7 @@ describe("collect", () => {
       ) {
         await store.put(
           `versions/${pushed}/version.json`,
-          JSON.stringify({ id: pushed, parents: [head], tables: { path: "tables.json" } }),
+          JSON.stringify({ id: pushed, parents: [head], tables: { bytes: 0, sha256: "" } }),
         );
         await store.put(
           `versions/${pushed}/tables.json`,

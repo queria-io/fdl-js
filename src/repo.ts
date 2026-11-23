@@ -18,8 +18,8 @@ export type VersionRecord = {
   created_at: string;
   author: { name: string; [k: string]: unknown };
   message: string;
-  /** The version's tables.json. `path` is always "tables.json"; readers open that name and do not read it */
-  tables: { path: string; bytes: number; sha256: string };
+  /** The version's tables.json, at its fixed name in the version folder */
+  tables: { bytes: number; sha256: string };
   [k: string]: unknown;
 };
 

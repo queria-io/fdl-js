@@ -192,12 +192,12 @@
       "data_dir": null
     },
     {
-      "name": "objects",
+      "name": "objects, a folder like any other",
       "fdl_json": {
         "fdl": "0.1",
         "data_dir": "objects/"
       },
-      "data_dir": null
+      "data_dir": "objects/"
     },
     {
       "name": "not a string",

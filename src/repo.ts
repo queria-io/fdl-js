@@ -132,12 +132,12 @@ const safe = (path: string) =>
 
 /**
  * Whether a value may be fdl.json's data_dir: a folder under the root, apart from the format's own
- * (versions/, refs/, assets/, objects/). It is taken as written, never corrected
+ * (versions/, refs/, assets/). It is taken as written, never corrected
  */
 export const isDataDir = (value: unknown): value is string =>
   typeof value === "string" &&
   value.endsWith("/") &&
-  !["versions", "refs", "assets", "objects"].includes(value.split("/")[0]!) &&
+  !["versions", "refs", "assets"].includes(value.split("/")[0]!) &&
   value
     .slice(0, -1)
     .split("/")

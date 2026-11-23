@@ -1,9 +1,9 @@
 {
   "fdl": "0.1",
-  "id": "01a201ef-3e59-7799-9878-b9fff4b671b5",
+  "id": "01a206ae-208d-782f-8b57-8d08036df1da",
   "seq": 1,
   "parents": [],
-  "created_at": "2026-11-22T06:26:26Z",
+  "created_at": "2026-11-23T04:33:25Z",
   "author": {
     "name": "test"
   },
@@ -12,22 +12,17 @@
     "path": "metadata.db",
     "storage": "duckdb-v1.5.0",
     "bytes": 290816,
-    "sha256": "e9b9359a189a8fdf0f184b0f2b99bd825738c3cd35d3c51fab6676b115fb5cc1"
-  },
-  "dataset": {
-    "path": "dataset.json",
-    "bytes": 1568,
-    "sha256": "d7dacc123283fb2f98c7c2906d28a9b099c76b45637a2359bcbe6047278912d2"
+    "sha256": "dd1eb0d2453a8fb29b631bf0d0aeeb1eec28f9fd2e7addcf621126c582cd8fb9"
   },
   "ducklake": {
     "format": "1.0",
     "snapshot_id": 6,
     "snapshots": [0, 6]
   },
-  "files": {
-    "path": "files.json",
-    "bytes": 3880,
-    "sha256": "76a4f50effeb5816e5ed4a8a38e0efdbe19585da82dd7e6673c4a94b33da66b0"
+  "tables": {
+    "path": "tables.json",
+    "bytes": 3575,
+    "sha256": "9f19d91b8bd1d397d05f2cf3b74d87caae4f77e2e4fdcaae7381f145136dbaf6"
   },
   "diff": {
     "tables": {
@@ -37,6 +32,5 @@
     "rows": [],
     "columns": [],
     "data": []
-  },
-  "annotations": {}
+  }
 }

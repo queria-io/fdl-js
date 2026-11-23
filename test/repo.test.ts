@@ -71,13 +71,6 @@ describe("open", () => {
     const renamed = tableFiles(version, "main.renamed")!;
     expect(renamed[0]!.columns!.map((c) => c.name)).toEqual(["b", "c"]);
   });
-
-  it("refuses renamed columns when files.json does not list the columns", async () => {
-    const version = await open(store);
-    const { columns: _, ...entry } = version.files.tables["main.renamed"]!;
-    const old = { ...version, files: { tables: { "main.renamed": entry } } };
-    expect(() => tableFiles(old, "main.renamed")).toThrow(/renamed columns/);
-  });
 });
 
 /** The fixture with some keys replaced */
@@ -98,18 +91,18 @@ describe("readVersion", () => {
     await expect(open(s)).rejects.toThrow(/unknown/);
   });
 
-  it("refuses a version without files.json", async () => {
+  it("refuses a version without tables.json", async () => {
     const { second } = await versions();
     await expect(
-      readVersion(patched({ [`versions/${second}/files.json`]: null }), second),
-    ).rejects.toThrow(/no tables.json or files.json/);
+      readVersion(patched({ [`versions/${second}/tables.json`]: null }), second),
+    ).rejects.toThrow(/no tables.json/);
   });
 
   it("refuses a path that leaves the dataset", async () => {
     const { second } = await versions();
     const list = { tables: { "main.t": { files: [{ path: "../x.parquet", rows: 1, bytes: 1 }] } } };
     const version = await readVersion(
-      patched({ [`versions/${second}/files.json`]: JSON.stringify(list) }),
+      patched({ [`versions/${second}/tables.json`]: JSON.stringify(list) }),
       second,
     );
     expect(() => tableFiles(version, "main.t")).toThrow(/outside/);
@@ -121,7 +114,7 @@ describe("readVersion", () => {
       tables: { "main.t": { files: [{ path: "%2e%2e/%2E%2e/x.parquet", rows: 1, bytes: 1 }] } },
     };
     const version = await readVersion(
-      patched({ [`versions/${second}/files.json`]: JSON.stringify(list) }),
+      patched({ [`versions/${second}/tables.json`]: JSON.stringify(list) }),
       second,
     );
     expect(() => tableFiles(version, "main.t")).toThrow(/outside/);
@@ -143,7 +136,7 @@ describe("views", () => {
     ],
   };
 
-  it("lists the views of files.json with their SQL and columns", async () => {
+  it("lists the views of tables.json with their SQL and columns", async () => {
     const version = await open(store);
     const listed = { ...version, files: { ...version.files, views: { "main.town_count": view } } };
     expect(viewNames(listed)).toEqual(["main.town_count"]);
@@ -154,26 +147,20 @@ describe("views", () => {
     expect(tableFiles(listed, "constructor")).toBeUndefined();
   });
 
-  it("gives no views when files.json does not list them", async () => {
+  it("gives no views when tables.json lists none", async () => {
     const version = await open(store);
     expect(viewNames({ ...version, files: { tables: {} } })).toEqual([]);
   });
 });
 
 describe("tables.json", () => {
-  // A version written with tables.json: its version.json names it, and files.json is gone
+  // The second version with its tables.json replaced
   const withTables = async (list: object) => {
     const { second } = await versions();
-    const dir = `versions/${second}/`;
-    const record = JSON.parse((await store.text(dir + "version.json"))!);
-    delete record.files;
-    record.tables = { path: "tables.json", bytes: 0, sha256: "" };
-    const s = patched({
-      [dir + "version.json"]: JSON.stringify(record),
-      [dir + "tables.json"]: JSON.stringify(list),
-      [dir + "files.json"]: null,
-    });
-    return readVersion(s, second);
+    return readVersion(
+      patched({ [`versions/${second}/tables.json`]: JSON.stringify(list) }),
+      second,
+    );
   };
   const list = {
     tables: {
@@ -215,7 +202,7 @@ describe("tables.json", () => {
     ).rejects.toThrow(/outside/);
   });
 
-  it("refuses a version.json whose tables names no file, without falling back to files.json", async () => {
+  it("refuses a version.json whose tables names no file", async () => {
     const { second } = await versions();
     const dir = `versions/${second}/`;
     const record = JSON.parse((await store.text(dir + "version.json"))!);

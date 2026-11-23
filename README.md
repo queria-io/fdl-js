@@ -1,8 +1,8 @@
 # fdl-js
 
-Read DuckLake tables published as [FDL](https://fdl.queria.io) datasets from JavaScript, without DuckDB: resolve a ref to a version, list the data files of its tables from `tables.json` (`files.json` in versions written before it), and read the Parquet files by range with [hyparquet](https://github.com/hyparam/hyparquet). It runs in Cloudflare Workers, browsers and Node.
+Read DuckLake tables published as [FDL](https://fdl.queria.io) datasets from JavaScript, without DuckDB: resolve a ref to a version, list the data files of its tables from `tables.json`, and read the Parquet files by range with [hyparquet](https://github.com/hyparam/hyparquet). It runs in Cloudflare Workers, browsers and Node.
 
-Reading never writes to the store; only the [retention](#retention) functions for a dataset's host do. Rows are read as DuckLake returns them: `openParquet` reads a data file's delete file, and `readRows` and `readWhere` leave out the deleted rows. Columns are found by the `id` that `tables.json` lists for each column, which DuckLake writes as the Parquet `field_id`, so a renamed column is read under its new name, a dropped column is left out, and a column or `struct` field added after a file was written holds its default (or null) in that file's rows. Fields inside a `struct`, a `list` or a `map` are found the same way. Defaults of every type DuckLake takes a default for are typed as hyparquet returns the column: a `Date` for dates and timestamps, microseconds (nanoseconds for `time_ns`) as a `bigint` for times, with a `timetz` moved to UTC. A table with renamed columns whose `files.json` has no `columns` (written before fdl-cli 0.24) is refused; read it with DuckDB.
+Reading never writes to the store; only the [retention](#retention) functions for a dataset's host do. Rows are read as DuckLake returns them: `openParquet` reads a data file's delete file, and `readRows` and `readWhere` leave out the deleted rows. Columns are found by the `id` that `tables.json` lists for each column, which DuckLake writes as the Parquet `field_id`, so a renamed column is read under its new name, a dropped column is left out, and a column or `struct` field added after a file was written holds its default (or null) in that file's rows. Fields inside a `struct`, a `list` or a `map` are found the same way. Defaults of every type DuckLake takes a default for are typed as hyparquet returns the column: a `Date` for dates and timestamps, microseconds (nanoseconds for `time_ns`) as a `bigint` for times, with a `timetz` moved to UTC.
 
 ## Install
 
@@ -36,7 +36,7 @@ Strings compare in code point order, as Parquet's statistics do, and null matche
 
 ## Views and declarations
 
-`viewNames(version)` lists the views in `tables.json`, and `viewOf(version, "main.town_count")` gives a view's `sql` and the `columns` its query returns, with DuckDB's type names. A version with `files.json` has none.
+`viewNames(version)` lists the views in `tables.json`, and `viewOf(version, "main.town_count")` gives a view's `sql` and the `columns` its query returns, with DuckDB's type names.
 
 `version.files` is the version's `tables.json`. Each table there declares its `primary_key`, its asset columns (`assets`) and `profile: false` when the writer makes no profile for it, and a view may declare `profile: false` too. `dependencies` gives each other dataset the views read, keyed by the name their SQL reads it under: its `url` and, when pinned, the `version` to read. Descriptions of the dataset live in its own tables, which read like any other table.
 
@@ -59,7 +59,7 @@ Each retries a failed request once. A store is three functions (`text`, `size`, 
 
 ## Retention
 
-For the host of a dataset: `expire(store, { keep, graceMs })` takes versions out of retention as `fdl expire` does, keeping the newest `keep` on each branch, the versions refs point at, their merge bases with main, and those made within the grace period, and `collect(store, { graceMs })` deletes the data files and assets no live version reaches once past the grace period, as `fdl gc` does. Both read `tables.json` (or `files.json`) and never open a catalog. The assets a version reaches are read from the asset columns its `tables.json` declares, in its data files; pass `assetValues` to read them another way. While a live version's assets cannot be read, or it has `files.json` and declares asset columns, no asset is deleted.
+For the host of a dataset: `expire(store, { keep, graceMs })` takes versions out of retention as `fdl expire` does, keeping the newest `keep` on each branch, the versions refs point at, their merge bases with main, and those made within the grace period, and `collect(store, { graceMs })` deletes the data files and assets no live version reaches once past the grace period, as `fdl gc` does. Both read `tables.json` and never open the metadata. The assets a version reaches are read from the asset columns its `tables.json` declares, in its data files; pass `assetValues` to read them another way. While a live version's assets cannot be read, no asset is deleted.
 
 ```ts
 const store = r2MaintainedStore(env.BUCKET, "towns/");
@@ -71,7 +71,7 @@ await collect(store, { graceMs: 86_400_000 });
 
 ## What it follows
 
-[Reading](https://fdl.queria.io/spec/reading) in the specification: `HEAD` and refs are followed, `version.json` must name its own ID and a known `fdl` major version, a version with `expired.json` is refused, and file paths from `tables.json` are read under `data_dir`. A version without `tables.json` or `files.json` cannot be read with this library.
+[Reading](https://fdl.queria.io/spec/reading) in the specification: `HEAD` and refs are followed, `version.json` must name its own ID and a known `fdl` major version, a version with `expired.json` is refused, and file paths from `tables.json` are read under `data_dir`. A version without `tables.json` cannot be read with this library.
 
 ## Develop
 

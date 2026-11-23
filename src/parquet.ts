@@ -69,7 +69,7 @@ export const memoryFooterCache = (): FooterCache => {
 
 const MAGIC = 0x31524150; // "PAR1"
 
-/** The footer (metadata and the last 8 bytes). One read when files.json gives footer_bytes */
+/** The footer (metadata and the last 8 bytes). One read when tables.json gives footer_bytes */
 const readFooter = async (file: AsyncBuffer, footerBytes?: number): Promise<ArrayBuffer> => {
   const size = file.byteLength;
   const guess = footerBytes !== undefined && footerBytes + 8 <= size ? footerBytes + 8 : 8;
@@ -99,7 +99,7 @@ export type ParquetFile = {
   key: string;
   file: AsyncBuffer;
   metadata: FileMetaData;
-  /** The table's columns, in files.json's order, when the DataFile gave them */
+  /** The table's columns, in tables.json's order, when the DataFile gave them */
   columns?: FileColumn[];
   /** Positions of the deleted rows, when the DataFile has a delete file */
   deleted?: Set<number>;

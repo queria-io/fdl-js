@@ -59,48 +59,6 @@ const dataKeys = async (store: MaintainedStore, id: string) => {
   );
 };
 
-// files.json as fdl writes it before `named`, which lists every data file the catalog names
-const withoutNamed = (store: Awaited<ReturnType<typeof memory>>) => {
-  for (const [key, o] of store.objects) {
-    if (!key.endsWith("/files.json")) continue;
-    const { named: _, ...list } = JSON.parse(o.body);
-    o.body = JSON.stringify(list);
-  }
-  return store;
-};
-
-// files.json with `named` worked out from `tables`, for tests that change `tables`
-const withNamed = (store: Awaited<ReturnType<typeof memory>>) => {
-  for (const [key, o] of store.objects) {
-    if (!key.endsWith("/files.json")) continue;
-    const list = JSON.parse(o.body);
-    const named = Object.values(
-      list.tables as Record<string, { files: { path: string; deletes?: { path: string } }[] }>,
-    ).flatMap((t) => t.files.flatMap((f) => [f.path, ...(f.deletes ? [f.deletes.path] : [])]));
-    o.body = JSON.stringify({ ...list, named });
-  }
-  return store;
-};
-
-// Each version written with tables.json in place of files.json, which drops `named`
-const withTables = (store: Awaited<ReturnType<typeof memory>>) => {
-  for (const [key, o] of store.objects) {
-    if (!key.endsWith("/files.json")) continue;
-    const dir = key.slice(0, -"files.json".length);
-    const { named: _, ...list } = JSON.parse(o.body);
-    store.objects.delete(key);
-    store.objects.set(`${dir}tables.json`, {
-      ...o,
-      key: `${dir}tables.json`,
-      body: JSON.stringify(list),
-    });
-    const v = store.objects.get(`${dir}version.json`)!;
-    const { files, ...record } = JSON.parse(v.body);
-    v.body = JSON.stringify({ ...record, tables: { ...files, path: "tables.json" } });
-  }
-  return store;
-};
-
 describe("expire", () => {
   it("takes the versions behind the newest out of retention", async () => {
     const store = await memory();
@@ -108,17 +66,10 @@ describe("expire", () => {
     const first = (await readVersion(store, head)).record.parents[0]!;
     expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([first]);
     expect(store.objects.has(`versions/${first}/expired.json`)).toBe(true);
-    expect(store.objects.has(`versions/${first}/files.json`)).toBe(false);
+    expect(store.objects.has(`versions/${first}/tables.json`)).toBe(false);
     expect(store.objects.has(`versions/${first}/version.json`)).toBe(true);
     // Already expired: nothing more to do
     expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([]);
-  });
-
-  it("deletes the tables.json of a version it takes out", async () => {
-    const store = withTables(await memory());
-    const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
-    expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([first]);
-    expect(store.objects.has(`versions/${first}/tables.json`)).toBe(false);
   });
 
   it("records who took the versions out and why", async () => {
@@ -139,35 +90,20 @@ describe("expire", () => {
     });
   });
 
-  it("deletes the metadata file at the name the record gives", async () => {
+  it("deletes the metadata file at the name the record gives, and the profiles", async () => {
     const store = await memory();
     const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
     const dir = `versions/${first}/`;
-    const { catalog, metadata, ...rest } = JSON.parse(
-      (await store.text(`${dir}version.json`))!,
-    ) as Record<string, unknown>;
-    const recorded = (metadata ?? catalog) as object;
-    // fdl 0.26 and earlier record it as `catalog`, at ducklake.duckdb, and other formats under catalogs/
+    const record = JSON.parse((await store.text(`${dir}version.json`))!);
     await store.put(
       `${dir}version.json`,
-      JSON.stringify({ ...rest, catalog: { ...recorded, path: "ducklake.duckdb" } }),
+      JSON.stringify({ ...record, metadata: { ...record.metadata, path: "metadata-1.db" } }),
     );
-    await store.put(`${dir}ducklake.duckdb`, "x");
-    await store.put(`${dir}catalogs/1.0.duckdb`, "x");
+    await store.put(`${dir}metadata-1.db`, "x");
+    await store.put(`${dir}profiles/geo.town.json`, "x");
     expect(await expire(store, { keep: 1, graceMs: DAY, now: NOW })).toEqual([first]);
-    expect(store.objects.has(`${dir}ducklake.duckdb`)).toBe(false);
-    expect(store.objects.has(`${dir}catalogs/1.0.duckdb`)).toBe(false);
-
-    const renamed = await memory();
-    await renamed.put(
-      `${dir}version.json`,
-      JSON.stringify({ ...rest, metadata: { ...recorded, path: "metadata.db" } }),
-    );
-    await renamed.put(`${dir}metadata.db`, "x");
-    await renamed.put(`${dir}metadata/1.0.db`, "x");
-    expect(await expire(renamed, { keep: 1, graceMs: DAY, now: NOW })).toEqual([first]);
-    expect(renamed.objects.has(`${dir}metadata.db`)).toBe(false);
-    expect(renamed.objects.has(`${dir}metadata/1.0.db`)).toBe(false);
+    expect(store.objects.has(`${dir}metadata-1.db`)).toBe(false);
+    expect(store.objects.has(`${dir}profiles/geo.town.json`)).toBe(false);
   });
 
   it("lists what it would expire without changing anything", async () => {
@@ -212,7 +148,7 @@ describe("expire", () => {
 
 describe("collect", () => {
   it("deletes what no live version reaches, once past the grace period", async () => {
-    const store = withNamed(await memory());
+    const store = await memory();
     const head = await resolve(store);
     const live = new Set(await dataKeys(store, head));
     store.objects.set("tables/main/towns/ducklake-unpushed.parquet", {
@@ -238,35 +174,8 @@ describe("collect", () => {
     for (const key of live) expect(store.objects.has(key)).toBe(true);
   });
 
-  it("keeps assets while a live version's rows hold assets", async () => {
-    const store = await memory();
-    const head = await resolve(store);
-    const key = `versions/${head}/dataset.json`;
-    const described = JSON.parse(store.objects.get(key)!.body);
-    described.tables[0].fields[0].asset = true;
-    await store.put(key, JSON.stringify(described));
-    const asset = `assets/${"a".repeat(64)}`;
-    store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
-    expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(asset);
-    expect(store.objects.has(asset)).toBe(true);
-  });
-
-  it("keeps assets while a live version's files.json names asset columns", async () => {
-    const store = await memory();
-    const head = await resolve(store);
-    const key = `versions/${head}/files.json`;
-    const files = JSON.parse(store.objects.get(key)!.body);
-    for (const table of Object.values<{ assets?: string[] }>(files.tables)) table.assets = ["pdf"];
-    await store.put(key, JSON.stringify(files));
-    await store.delete([`versions/${head}/dataset.json`]);
-    const asset = `assets/${"a".repeat(64)}`;
-    store.objects.set(asset, { key: asset, uploaded: OLD, body: "" });
-    expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(asset);
-    expect(store.objects.has(asset)).toBe(true);
-  });
-
   it("keeps the assets the asset columns of a live version's tables.json hold", async () => {
-    const store = withTables(await memory());
+    const store = await memory();
     const head = await resolve(store);
     const key = `versions/${head}/tables.json`;
     const list = JSON.parse(store.objects.get(key)!.body);
@@ -288,7 +197,7 @@ describe("collect", () => {
   });
 
   it("deletes no asset while a live version's asset columns cannot be read", async () => {
-    const store = withTables(await memory());
+    const store = await memory();
     const key = `versions/${await resolve(store)}/tables.json`;
     const list = JSON.parse(store.objects.get(key)!.body);
     list.tables["geo.town"].assets = ["name"];
@@ -316,17 +225,6 @@ describe("collect", () => {
     ).toEqual(rows.flat().map((r) => r.name));
   });
 
-  it("deletes what no live version with tables.json reaches, without named", async () => {
-    const store = withTables(await memory());
-    const live = new Set(await dataKeys(store, await resolve(store)));
-    const file = "tables/main/towns/ducklake-unpushed.parquet";
-    store.objects.set(file, { key: file, uploaded: OLD, body: "" });
-    await expire(store, { keep: 1, graceMs: DAY, now: NOW });
-    const deleted = await collect(store, { graceMs: DAY, now: NOW });
-    expect(deleted).toContain(file);
-    expect(deleted.filter((key) => live.has(key))).toEqual([]);
-  });
-
   it("keeps what a version pushed while it runs reaches", async () => {
     const store = await memory();
     const head = await resolve(store);
@@ -336,15 +234,15 @@ describe("collect", () => {
     const text = store.text;
     store.text = async (key) => {
       if (
-        key === `versions/${head}/files.json` &&
+        key === `versions/${head}/tables.json` &&
         !store.objects.has(`versions/${pushed}/version.json`)
       ) {
         await store.put(
           `versions/${pushed}/version.json`,
-          JSON.stringify({ id: pushed, parents: [head] }),
+          JSON.stringify({ id: pushed, parents: [head], tables: { path: "tables.json" } }),
         );
         await store.put(
-          `versions/${pushed}/files.json`,
+          `versions/${pushed}/tables.json`,
           JSON.stringify({
             tables: { "main.towns": { files: [{ path: "main/towns/ducklake-reused.parquet" }] } },
           }),
@@ -356,38 +254,16 @@ describe("collect", () => {
     expect(store.objects.has(file)).toBe(true);
   });
 
-  it("keeps a data file only an older snapshot of a live version's catalog names", async () => {
-    const store = withNamed(await memory());
-    const head = await resolve(store);
-    const file = "main/towns/ducklake-older-snapshot.parquet";
-    store.objects.set(`tables/${file}`, { key: `tables/${file}`, uploaded: OLD, body: "" });
-    const o = store.objects.get(`versions/${head}/files.json`)!;
-    const list = JSON.parse(o.body);
-    o.body = JSON.stringify({ ...list, named: [...list.named, file] });
-    expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(`tables/${file}`);
-    expect(store.objects.has(`tables/${file}`)).toBe(true);
-  });
-
-  it("deletes no data file while a live version's files.json lacks named", async () => {
-    const store = withoutNamed(await memory());
-    const file = "tables/main/towns/ducklake-unpushed.parquet";
-    store.objects.set(file, { key: file, uploaded: OLD, body: "" });
-    expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain(file);
-    expect(store.objects.has(file)).toBe(true);
-  });
-
   it("deletes only data files under data_dir", async () => {
     const store = await memory();
     store.objects.set("tables/README.md", { key: "tables/README.md", uploaded: OLD, body: "" });
     expect(await collect(store, { graceMs: DAY, now: NOW })).not.toContain("tables/README.md");
   });
 
-  it("refuses when a live version has no files.json", async () => {
+  it("refuses when a live version has no tables.json", async () => {
     const store = await memory();
-    await store.delete([`versions/${await resolve(store)}/files.json`]);
-    await expect(collect(store, { graceMs: DAY, now: NOW })).rejects.toThrow(
-      /no tables.json or files.json/,
-    );
+    await store.delete([`versions/${await resolve(store)}/tables.json`]);
+    await expect(collect(store, { graceMs: DAY, now: NOW })).rejects.toThrow(/no tables.json/);
   });
 
   it("refuses a live version whose record names tables.json without a path", async () => {
@@ -399,7 +275,7 @@ describe("collect", () => {
   });
 
   it("deletes the tables.json the record names when it takes a version out", async () => {
-    const store = withTables(await memory());
+    const store = await memory();
     const first = (await readVersion(store, await resolve(store))).record.parents[0]!;
     const dir = `versions/${first}/`;
     const record = JSON.parse(store.objects.get(`${dir}version.json`)!.body);
@@ -414,13 +290,13 @@ describe("collect", () => {
     expect(store.objects.has(`${dir}tables-1.json`)).toBe(false);
   });
 
-  it("refuses a live version whose files.json path leaves its folder", async () => {
+  it("refuses a live version whose tables.json path leaves its folder", async () => {
     const store = await memory();
     const key = `versions/${await resolve(store)}/version.json`;
     const record = JSON.parse(store.objects.get(key)!.body);
     await store.put(
       key,
-      JSON.stringify({ ...record, files: { ...record.files, path: "../x.json" } }),
+      JSON.stringify({ ...record, tables: { ...record.tables, path: "../x.json" } }),
     );
     await expect(collect(store, { graceMs: DAY, now: NOW })).rejects.toThrow(/outside/);
   });

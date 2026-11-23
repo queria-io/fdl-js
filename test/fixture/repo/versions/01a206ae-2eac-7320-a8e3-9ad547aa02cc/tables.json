@@ -3,10 +3,10 @@
     "geo.town": {
       "files": [
         {
-          "path": "geo/town/ducklake-01a201ef-3afa-7093-beaa-d4d09ee349ff.parquet",
+          "path": "geo/town/ducklake-01a206ae-1cb8-7f07-a253-690b6ab749fb.parquet",
           "rows": 10000,
-          "bytes": 20629,
-          "footer_bytes": 1583
+          "bytes": 20459,
+          "footer_bytes": 1413
         }
       ],
       "columns": [
@@ -44,14 +44,14 @@
     "main.gone": {
       "files": [
         {
-          "path": "main/gone/ducklake-01a201ef-3b30-7a72-b645-346185d6f344.parquet",
+          "path": "main/gone/ducklake-01a206ae-1ce6-79a2-b384-5a8b0cafa86b.parquet",
           "rows": 10,
-          "bytes": 271,
-          "footer_bytes": 182,
+          "bytes": 262,
+          "footer_bytes": 173,
           "deletes": {
-            "path": "main/gone/ducklake-01a201ef-53d5-759a-8766-742e3fc00469-delete.parquet",
+            "path": "main/gone/ducklake-01a206ae-29b7-7b51-93e4-6078f5f2992e-delete.parquet",
             "rows": 3,
-            "bytes": 893
+            "bytes": 887
           }
         }
       ],
@@ -67,16 +67,16 @@
     "main.nested": {
       "files": [
         {
-          "path": "main/nested/ducklake-01a201ef-3ba6-707d-8f37-a746d558fd20.parquet",
+          "path": "main/nested/ducklake-01a206ae-1d56-7acb-8d69-cd69083ffdea.parquet",
           "rows": 1,
-          "bytes": 928,
-          "footer_bytes": 680
+          "bytes": 874,
+          "footer_bytes": 626
         },
         {
-          "path": "main/nested/ducklake-01a201ef-55f6-7fa3-92e2-52743ea264cb.parquet",
+          "path": "main/nested/ducklake-01a206ae-2b82-7a60-b748-16c89e2d1a86.parquet",
           "rows": 1,
-          "bytes": 2100,
-          "footer_bytes": 1499
+          "bytes": 1963,
+          "footer_bytes": 1362
         }
       ],
       "columns": [
@@ -225,27 +225,27 @@
     "main.renamed": {
       "files": [
         {
-          "path": "main/renamed/ducklake-01a201ef-3b5a-7a56-bf81-6d12d5ea41ab.parquet",
+          "path": "main/renamed/ducklake-01a206ae-1d0f-7866-af64-36a6559e7117.parquet",
           "rows": 10,
-          "bytes": 271,
-          "footer_bytes": 182
+          "bytes": 262,
+          "footer_bytes": 173
         },
         {
-          "path": "main/renamed/ducklake-01a201ef-5407-76e4-ba79-ddd0b1a4af1b.parquet",
+          "path": "main/renamed/ducklake-01a206ae-29de-793b-b303-cb7ab9575ef5.parquet",
           "rows": 3,
-          "bytes": 242,
-          "footer_bytes": 178,
+          "bytes": 233,
+          "footer_bytes": 169,
           "deletes": {
-            "path": "main/renamed/ducklake-01a201ef-544b-7806-a692-c933abfa1bd4-delete.parquet",
+            "path": "main/renamed/ducklake-01a206ae-2a0f-715d-910f-f4e1ac345f6c-delete.parquet",
             "rows": 1,
-            "bytes": 883
+            "bytes": 877
           }
         },
         {
-          "path": "main/renamed/ducklake-01a201ef-544b-7119-9c6f-fd69602b1972.parquet",
+          "path": "main/renamed/ducklake-01a206ae-2a0f-7517-983e-cc2c07fec83d.parquet",
           "rows": 1,
-          "bytes": 522,
-          "footer_bytes": 393
+          "bytes": 495,
+          "footer_bytes": 366
         }
       ],
       "columns": [
@@ -265,15 +265,19 @@
       "renamed_columns": true
     }
   },
-  "named": [
-    "geo/town/ducklake-01a201ef-3afa-7093-beaa-d4d09ee349ff.parquet",
-    "main/gone/ducklake-01a201ef-3b30-7a72-b645-346185d6f344.parquet",
-    "main/gone/ducklake-01a201ef-53d5-759a-8766-742e3fc00469-delete.parquet",
-    "main/nested/ducklake-01a201ef-3ba6-707d-8f37-a746d558fd20.parquet",
-    "main/nested/ducklake-01a201ef-55f6-7fa3-92e2-52743ea264cb.parquet",
-    "main/renamed/ducklake-01a201ef-3b5a-7a56-bf81-6d12d5ea41ab.parquet",
-    "main/renamed/ducklake-01a201ef-5407-76e4-ba79-ddd0b1a4af1b.parquet",
-    "main/renamed/ducklake-01a201ef-544b-7119-9c6f-fd69602b1972.parquet",
-    "main/renamed/ducklake-01a201ef-544b-7806-a692-c933abfa1bd4-delete.parquet"
-  ]
+  "views": {
+    "main.town_count": {
+      "sql": "SELECT lg_code, count_star() AS towns FROM geo.town GROUP BY lg_code",
+      "columns": [
+        {
+          "name": "lg_code",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "towns",
+          "type": "BIGINT"
+        }
+      ]
+    }
+  }
 }

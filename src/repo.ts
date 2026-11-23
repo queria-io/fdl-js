@@ -1,5 +1,5 @@
 // Resolve a ref to a version and list the data files of its tables, following
-// https://fdl.queria.io/spec/reading. Only tables.json (files.json in earlier versions) is read:
+// https://fdl.queria.io/spec/reading. Only tables.json is read:
 // the metadata is never opened
 import { NotFoundError, type Store } from "./store.js";
 
@@ -8,7 +8,7 @@ const KNOWN_MAJOR = "0";
 
 export class FdlError extends Error {}
 
-export type Config = { fdl: string; id?: string; data_dir: string };
+export type Config = { fdl: string; data_dir: string };
 
 export type VersionRecord = {
   fdl: string;
@@ -19,9 +19,7 @@ export type VersionRecord = {
   author: { name: string; [k: string]: unknown };
   message: string;
   /** The version's tables.json */
-  tables?: { path: string; bytes: number; sha256: string };
-  /** The files.json of a version written before tables.json */
-  files?: { path: string; bytes: number; sha256: string };
+  tables: { path: string; bytes: number; sha256: string };
   [k: string]: unknown;
 };
 
@@ -43,14 +41,14 @@ export type Column = {
   children?: Column[];
 };
 
-/** A version's tables.json, or the files.json of a version written before it */
+/** A version's tables.json */
 export type FileList = {
   tables: Record<
     string,
     {
       files: FileEntry[];
-      /** The table's columns. files.json written before fdl-cli 0.24 has none */
-      columns?: Column[];
+      /** The table's columns */
+      columns: Column[];
       renamed_columns?: boolean;
       /** The columns that identify a row, when declared */
       primary_key?: string[];
@@ -60,7 +58,7 @@ export type FileList = {
       profile?: boolean;
     }
   >;
-  /** Every view alive at the snapshot, keyed schema.view. files.json has none */
+  /** Every view alive at the snapshot, keyed schema.view */
   views?: Record<string, ViewEntry>;
   /** Each other dataset the views read, keyed by the name their SQL reads it under */
   dependencies?: Record<string, Dependency>;
@@ -79,7 +77,7 @@ export type ViewEntry = {
   profile?: boolean;
 };
 
-/** One version of a dataset, with its tables.json (files.json in earlier versions) */
+/** One version of a dataset, with its tables.json */
 export type Version = { config: Config; record: VersionRecord; files: FileList };
 
 /** A data file to read: its key in the store, rows and sizes from tables.json */
@@ -188,7 +186,7 @@ export const resolve = async (store: Store, rev = "HEAD"): Promise<string> => {
   return found;
 };
 
-/** Reads a version: checks its record and expiry, and reads its tables.json (or files.json) */
+/** Reads a version: checks its record and expiry, and reads its tables.json */
 export const readVersion = async (store: Store, id: string, config?: Config): Promise<Version> => {
   const dir = `versions/${id}/`;
   const [cfg, text, expired] = await Promise.all([
@@ -202,13 +200,11 @@ export const readVersion = async (store: Store, id: string, config?: Config): Pr
   const record = JSON.parse(text) as VersionRecord;
   if (record.id !== id) throw new FdlError(`${dir}version.json holds ${record.id}`);
   checkMajor(String(record.fdl), `version ${id}`);
-  const filesPath =
-    record.tables !== undefined ? record.tables.path : (record.files?.path ?? "files.json");
+  const filesPath = record.tables?.path;
   if (!isFileName(filesPath))
-    throw new FdlError(`version ${id} names a file outside it: ${filesPath}`);
+    throw new FdlError(`version ${id} names a file outside it: ${String(filesPath)}`);
   const files = await store.text(dir + filesPath);
-  if (files === null)
-    throw new FdlError(`version ${id} has no tables.json or files.json; read it with DuckDB`);
+  if (files === null) throw new FdlError(`version ${id} has no tables.json`);
   return { config: cfg, record, files: JSON.parse(files) as FileList };
 };
 
@@ -221,7 +217,7 @@ export const open = async (store: Store, rev = "HEAD"): Promise<Version> => {
 /** The names (schema.table) of the version's tables */
 export const tableNames = (version: Version): string[] => Object.keys(version.files.tables);
 
-/** The names (schema.view) of the version's views. [] for a version with files.json */
+/** The names (schema.view) of the version's views */
 export const viewNames = (version: Version): string[] => Object.keys(version.files.views ?? {});
 
 /** A view (schema.view): its SQL and columns, or undefined when the version does not list it */
@@ -233,8 +229,7 @@ export const viewOf = (version: Version, view: string): ViewEntry | undefined =>
 /**
  * The data files of a table (schema.table), or undefined when the version has no such table.
  * Each carries its delete file and the table's columns, so openParquet and readRows leave out
- * deleted rows and find renamed columns by field_id. Throws for a table with renamed columns
- * whose files.json has no columns (written before fdl-cli 0.24): its old files carry old names
+ * deleted rows and find renamed columns by field_id
  */
 export const tableFiles = (
   version: Pick<Version, "config" | "files">,
@@ -243,8 +238,6 @@ export const tableFiles = (
   const { tables } = version.files;
   const entry = Object.hasOwn(tables, table) ? tables[table] : undefined;
   if (!entry) return undefined;
-  if (entry.renamed_columns && !entry.columns)
-    throw new FdlError(`${table} has renamed columns, and files.json does not list its columns`);
   const key = (path: string) => {
     if (!safe(path)) throw new FdlError(`${table} names a file outside the dataset: ${path}`);
     return version.config.data_dir + path;
@@ -257,7 +250,7 @@ export const tableFiles = (
     ...(f.deletes
       ? { deletes: { key: key(f.deletes.path), rows: f.deletes.rows, bytes: f.deletes.bytes } }
       : {}),
-    ...(entry.columns ? { columns: entry.columns } : {}),
+    columns: entry.columns,
   }));
 };
 

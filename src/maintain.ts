@@ -1,12 +1,12 @@
 // Retention for a dataset's host, following https://fdl.queria.io/spec/data-files:
 // take older versions out of retention (as `fdl expire` does) and delete the data files no
 // live version reaches once past the grace period (as `fdl gc` does). Metadata files are never
-// opened: what a version reaches comes from its tables.json, or `named` in an earlier version's
-// files.json, and the assets it reaches from the rows of the asset columns tables.json declares
+// opened: what a version reaches comes from its tables.json, and the assets it reaches from the
+// rows of the asset columns tables.json declares
 import { openParquet, readRows } from "./parquet.js";
 import {
   type Config,
-  type FileList as Listed,
+  type FileList,
   FdlError,
   type Version,
   isFileName,
@@ -84,11 +84,7 @@ type Head = {
   parents: string[];
   created_at: string;
   tables?: { path?: unknown };
-  files?: { path?: unknown };
-  dataset?: { path: string };
-  /** The metadata file. Records written by fdl 0.26 and earlier name it `catalog` */
   metadata?: { path?: unknown };
-  catalog?: { path?: unknown };
 };
 
 const record = async (store: Store, id: string): Promise<Head | null> => {
@@ -183,14 +179,9 @@ const firstParents = async (
   return found;
 };
 
-/**
- * The metadata files to delete: the one the record names (`metadata`, or `catalog` in records
- * written by fdl 0.26 and earlier), or both default names when the record names none it can use
- */
-const metadataPaths = (head: Head): string[] => {
-  const path = (head.metadata ?? head.catalog)?.path;
-  return isFileName(path) ? [path] : ["metadata.db", "ducklake.duckdb"];
-};
+/** The metadata file to delete: the one the record names, or the default name */
+const metadataPath = (head: Head): string =>
+  isFileName(head.metadata?.path) ? head.metadata.path : "metadata.db";
 
 /** Takes one version out of retention: the mark first, then its metadata and indexes */
 const expireOne = async (
@@ -201,13 +192,8 @@ const expireOne = async (
   { by, message }: Pick<ExpireOptions, "by" | "message">,
 ) => {
   const dir = `versions/${id}/`;
-  const metadata = new Set(metadataPaths(head).map((path) => dir + path));
-  // tables.json or files.json, by the name the record gives and by the default names
-  const listings = new Set(
-    ["tables.json", "files.json", ...[head.tables?.path, head.files?.path].filter(isFileName)].map(
-      (path) => dir + path,
-    ),
-  );
+  const metadata = dir + metadataPath(head);
+  const listing = dir + (isFileName(head.tables?.path) ? head.tables.path : "tables.json");
   if (!(await isExpired(store, id)))
     await store.put(
       `${dir}expired.json`,
@@ -215,17 +201,7 @@ const expireOne = async (
     );
   const indexed = (await store.list(dir))
     .map((p) => p.key)
-    .filter(
-      (key) =>
-        metadata.has(key) ||
-        listings.has(key) ||
-        key === `${dir}dataset.json` ||
-        key === `${dir}tree.json` ||
-        key.startsWith(`${dir}metadata/`) ||
-        // Other DuckLake formats, as fdl 0.26 and earlier lay them out
-        key.startsWith(`${dir}catalogs/`) ||
-        key.startsWith(`${dir}profiles/`),
-    );
+    .filter((key) => key === metadata || key === listing || key.startsWith(`${dir}profiles/`));
   await store.delete(indexed);
 };
 
@@ -290,12 +266,6 @@ export const expire = async (
   return expired;
 };
 
-type FileList = Listed & {
-  /** Every data file the metadata names, at any snapshot. Absent in files.json written before it */
-  named?: string[];
-};
-type Described = { tables?: { kind?: string; fields?: { asset?: boolean }[] }[] };
-
 const SHA256 = /^[0-9a-f]{64}$/;
 const ASSET = /^assets\/[0-9a-f]{64}$/;
 /** A data or delete file as DuckLake names it, under data_dir */
@@ -320,68 +290,41 @@ export const readAssetValues: AssetValues = async (store, version, table, column
 };
 
 /**
- * What a live version reaches: the data files its metadata names, the assets its rows hold, and
- * whether every data file and asset it reaches is known. A version with tables.json keeps one
- * snapshot, so its `tables` list every data file, and the asset columns it declares hold every
- * asset. An earlier version's files.json lists the data files in `named`; without it, the metadata
- * may name more. Its assets are not read: while it declares asset columns (in files.json, or in a
- * version written before tags, a field with `asset: true` in dataset.json), no asset is known
+ * What a live version reaches: the data files and delete files its tables.json lists, and the
+ * assets its rows hold, or undefined when they cannot be read. A version keeps one snapshot, so
+ * its `tables` list every data file, and the asset columns it declares hold every asset
  */
 const reachedBy = async (store: Store, config: Config, id: string, assetValues: AssetValues) => {
-  const dir = `versions/${id}/`;
   const current = await record(store, id);
-  // A record that names tables.json is read from it alone, since only tables.json lists every
-  // data file the version reaches
-  const listing =
-    current?.tables !== undefined ? current.tables.path : (current?.files?.path ?? "files.json");
-  if (!isFileName(listing)) throw new FdlError(`version ${id} names a file outside it: ${listing}`);
-  const datasetPath = current?.dataset?.path ?? "dataset.json";
-  if (!isFileName(datasetPath))
-    throw new FdlError(`version ${id} names a file outside it: ${datasetPath}`);
-  const [files, described] = await Promise.all([
-    store.text(dir + listing),
-    current?.tables !== undefined ? null : store.text(dir + datasetPath),
-  ]);
-  if (files === null)
-    throw new Error(
-      `version ${id} is live but has no tables.json or files.json to say what it reads`,
-    );
+  const listing = current?.tables?.path;
+  if (!isFileName(listing))
+    throw new FdlError(`version ${id} names a file outside it: ${String(listing)}`);
+  const files = await store.text(`versions/${id}/${listing}`);
+  if (files === null) throw new Error(`version ${id} is live but has no tables.json`);
   const list = JSON.parse(files) as FileList;
-  const data = [
-    ...(list.named ?? []),
-    ...Object.values(list.tables).flatMap((t) =>
-      t.files.flatMap((f) => [f.path, ...(f.deletes ? [f.deletes.path] : [])]),
-    ),
-  ];
+  const data = Object.values(list.tables).flatMap((t) =>
+    t.files.flatMap((f) => [f.path, ...(f.deletes ? [f.deletes.path] : [])]),
+  );
   const declared = Object.entries(list.tables).flatMap(([table, t]) =>
     t.assets && t.assets.length > 0 ? [{ table, columns: t.assets }] : [],
   );
-  const fields = ((described ? (JSON.parse(described) as Described) : {}).tables ?? [])
-    .filter((t) => t.kind !== "view")
-    .flatMap((t) => t.fields ?? []);
-  const assets =
-    current?.tables === undefined
-      ? declared.length > 0 || fields.some((f) => f.asset === true)
-        ? undefined
-        : []
-      : await Promise.all(
-          declared.map(({ table, columns }) =>
-            assetValues(store, { id, config, files: list }, table, columns),
-          ),
-        ).then(
-          (values) =>
-            values
-              .flat()
-              .filter((v): v is string => typeof v === "string" && SHA256.test(v))
-              .map((v) => `assets/${v}`),
-          // Assets that cannot be read are not known
-          () => undefined,
-        );
+  const assets = await Promise.all(
+    declared.map(({ table, columns }) =>
+      assetValues(store, { id, config, files: list }, table, columns),
+    ),
+  ).then(
+    (values) =>
+      values
+        .flat()
+        .filter((v): v is string => typeof v === "string" && SHA256.test(v))
+        .map((v) => `assets/${v}`),
+    // Assets that cannot be read are not known
+    () => undefined,
+  );
   return {
     keys: data.map((path) => config.data_dir + path),
     /** The assets the version's rows hold, or undefined when they are not known */
     assets,
-    named: current?.tables !== undefined || list.named !== undefined,
   };
 };
 
@@ -406,9 +349,8 @@ export type CollectOptions = {
 /**
  * Deletes the data files and assets no live version reaches, written longer ago than the grace
  * period, as `fdl gc` does. These are files only expired versions reached, and files working
- * metadata files wrote and never pushed. A version reaches every data file its metadata names: those
- * in `tables` of its tables.json, or in `named` of an earlier version's files.json; while a live
- * version's files.json lacks `named`, no data file is deleted. A version reaches the assets the
+ * metadata files wrote and never pushed. A version reaches every data file and delete file in
+ * `tables` of its tables.json. A version reaches the assets the
  * asset columns of its tables.json hold; while a live version's assets cannot be read, no asset is
  * deleted. The objects are listed before the versions are read, and the versions are listed again
  * just before deleting, so a version pushed meanwhile keeps what it reaches. Returns the keys
@@ -424,12 +366,10 @@ export const collect = async (
   const [data, assets] = await Promise.all([store.list(dataDir), store.list("assets/")]);
   const kept = new Set<string>();
   let assetsUnknown = false;
-  let unnamed = false;
   const keep = async (ids: string[]) => {
     for (const r of await Promise.all(ids.map((id) => reachedBy(store, config, id, assetValues)))) {
       for (const key of [...r.keys, ...(r.assets ?? [])]) kept.add(key);
       assetsUnknown ||= r.assets === undefined;
-      unnamed ||= !r.named;
     }
   };
   const read = await liveVersions(store);
@@ -438,8 +378,7 @@ export const collect = async (
     placed.filter((p) => p.uploaded.getTime() < before && !kept.has(p.key)).map((p) => p.key);
   const planned = () =>
     [
-      // A live version whose files.json lacks `named` may reach data files no listing names
-      ...(unnamed ? [] : old(data).filter((key) => DATA_FILE.test(key.slice(dataDir.length)))),
+      ...old(data).filter((key) => DATA_FILE.test(key.slice(dataDir.length))),
       ...(assetsUnknown ? [] : old(assets).filter((key) => ASSET.test(key))),
     ].sort();
   if (dryRun) return planned();

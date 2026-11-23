@@ -20,9 +20,6 @@ con.execute(sys.argv[2])
 con.execute(sys.argv[1])
 PY
 }
-cat > work/dataset.json <<'JSON'
-{ "name": "towns", "title": "Towns" }
-JSON
 sql "
 CALL ducklake_set_option('lake', 'parquet_row_group_size', 2048);
 CALL ducklake_set_option('lake', 'parquet_compression', 'zstd');
@@ -36,9 +33,9 @@ CREATE TABLE lake.main.empty (x INTEGER);
 CREATE TABLE lake.main.nested AS
   SELECT 1 AS id, {'a': 1, 'b': 'x'} AS s, [{'p': 1}] AS l, MAP {'k': {'q': 2}} AS m;
 "
-$FDL commit work/lake.sqlite -m "First" --author test --dataset work/dataset.json
+$FDL commit work/lake.sqlite -m "First" --author test
 $FDL push work/lake.sqlite
-rm work/lake.sqlite*
+rm -rf work/lake.sqlite*
 sql "
 DELETE FROM lake.main.gone WHERE i < 3;
 ALTER TABLE lake.main.renamed RENAME COLUMN a TO b;
@@ -49,22 +46,22 @@ ALTER TABLE lake.main.nested RENAME COLUMN s.a TO a2;
 ALTER TABLE lake.main.nested ADD COLUMN s.c INTEGER DEFAULT 5;
 ALTER TABLE lake.main.nested RENAME COLUMN l.element.p TO p2;
 ALTER TABLE lake.main.nested RENAME COLUMN m.value.q TO q2;
-ALTER TABLE lake.main.nested ADD COLUMN d DATE DEFAULT DATE '2020-01-02';
-ALTER TABLE lake.main.nested ADD COLUMN ts TIMESTAMP DEFAULT TIMESTAMP '2020-01-02 03:04:05.123456';
-ALTER TABLE lake.main.nested ADD COLUMN tz TIMESTAMPTZ DEFAULT TIMESTAMPTZ '2020-01-02 03:04:05+09';
+ALTER TABLE lake.main.nested ADD COLUMN d DATE DEFAULT '2020-01-02';
+ALTER TABLE lake.main.nested ADD COLUMN ts TIMESTAMP DEFAULT '2020-01-02 03:04:05.123456';
+ALTER TABLE lake.main.nested ADD COLUMN tz TIMESTAMPTZ DEFAULT '2020-01-02 03:04:05+09';
 ALTER TABLE lake.main.nested ADD COLUMN dec DECIMAL(10,2) DEFAULT 12.34;
-ALTER TABLE lake.main.nested ADD COLUMN tm TIME DEFAULT TIME '03:04:05.5';
-ALTER TABLE lake.main.nested ADD COLUMN bl BLOB DEFAULT '\\x01B'::BLOB;
+ALTER TABLE lake.main.nested ADD COLUMN tm TIME DEFAULT '03:04:05.5';
+ALTER TABLE lake.main.nested ADD COLUMN bl BLOB DEFAULT '\\x01B';
 ALTER TABLE lake.main.nested ADD COLUMN h HUGEINT DEFAULT 3;
 ALTER TABLE lake.main.nested ADD COLUMN js JSON DEFAULT '{\"a\":1}';
 INSERT INTO lake.main.nested (id, s, l, m) VALUES (2, {'a2': 3, 'b': 'y', 'c': 4}, [{'p2': 5}], MAP {'j': {'q2': 6}});
 USE lake;
 CREATE VIEW main.town_count AS SELECT lg_code, count(*) AS towns FROM geo.town GROUP BY lg_code;
 "
-$FDL commit work/lake.sqlite -m "Second" --author test --dataset work/dataset.json
+$FDL commit work/lake.sqlite -m "Second" --author test
 $FDL push work/lake.sqlite
-rm work/lake.sqlite*
-rm -rf work dataset.json
+rm -rf work/lake.sqlite*
+rm -rf work
 # The reader never opens the metadata or the profiles; leave them out to keep the fixture small
 rm -r repo/versions/*/metadata.db repo/versions/*/profiles
 # A plain Parquet file for the row group filters: kind is not sorted, so only its bloom filter

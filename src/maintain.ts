@@ -9,7 +9,6 @@ import {
   type FileList,
   FdlError,
   type Version,
-  isFileName,
   isVersionId,
   readConfig,
   resolve,
@@ -83,8 +82,6 @@ type Head = {
   id: string;
   parents: string[];
   created_at: string;
-  tables?: { path?: unknown };
-  metadata?: { path?: unknown };
 };
 
 const record = async (store: Store, id: string): Promise<Head | null> => {
@@ -179,21 +176,17 @@ const firstParents = async (
   return found;
 };
 
-/** The metadata file to delete: the one the record names, or the default name */
-const metadataPath = (head: Head): string =>
-  isFileName(head.metadata?.path) ? head.metadata.path : "metadata.db";
-
 /** Takes one version out of retention: the mark first, then its metadata and indexes */
 const expireOne = async (
   store: MaintainedStore,
   id: string,
-  head: Head,
   now: Date,
   { by, message }: Pick<ExpireOptions, "by" | "message">,
 ) => {
   const dir = `versions/${id}/`;
-  const metadata = dir + metadataPath(head);
-  const listing = dir + (isFileName(head.tables?.path) ? head.tables.path : "tables.json");
+  // The files of a version have fixed names; the record's `path` is not read
+  const metadata = dir + "metadata.db";
+  const listing = dir + "tables.json";
   if (!(await isExpired(store, id)))
     await store.put(
       `${dir}expired.json`,
@@ -262,7 +255,7 @@ export const expire = async (
   // A ref may have come to point at one of them meanwhile
   const stillHeld = await held(store);
   const expired = taken.filter((id) => !stillHeld.has(id));
-  for (const id of expired) await expireOne(store, id, await read(id), now, { by, message });
+  for (const id of expired) await expireOne(store, id, now, { by, message });
   return expired;
 };
 
@@ -295,11 +288,7 @@ export const readAssetValues: AssetValues = async (store, version, table, column
  * its `tables` list every data file, and the asset columns it declares hold every asset
  */
 const reachedBy = async (store: Store, config: Config, id: string, assetValues: AssetValues) => {
-  const current = await record(store, id);
-  const listing = current?.tables?.path;
-  if (!isFileName(listing))
-    throw new FdlError(`version ${id} names a file outside it: ${String(listing)}`);
-  const files = await store.text(`versions/${id}/${listing}`);
+  const files = await store.text(`versions/${id}/tables.json`);
   if (files === null) throw new Error(`version ${id} is live but has no tables.json`);
   const list = JSON.parse(files) as FileList;
   const data = Object.values(list.tables).flatMap((t) =>

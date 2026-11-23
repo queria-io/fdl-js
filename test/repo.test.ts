@@ -192,24 +192,19 @@ describe("tables.json", () => {
     expect(version.files.dependencies).toEqual(list.dependencies);
   });
 
-  it("refuses a version.json that names tables.json outside the version", async () => {
+  it("reads tables.json at its fixed name, whatever path the record gives", async () => {
     const { second } = await versions();
     const dir = `versions/${second}/`;
     const record = JSON.parse((await store.text(dir + "version.json"))!);
-    record.tables = { path: "../x.json", bytes: 0, sha256: "" };
-    await expect(
-      readVersion(patched({ [dir + "version.json"]: JSON.stringify(record) }), second),
-    ).rejects.toThrow(/outside/);
-  });
-
-  it("refuses a version.json whose tables names no file", async () => {
-    const { second } = await versions();
-    const dir = `versions/${second}/`;
-    const record = JSON.parse((await store.text(dir + "version.json"))!);
-    record.tables = { bytes: 0, sha256: "" };
-    await expect(
-      readVersion(patched({ [dir + "version.json"]: JSON.stringify(record) }), second),
-    ).rejects.toThrow(/outside/);
+    const read = await readVersion(store, second);
+    for (const tables of [
+      { path: "../x.json", bytes: 0, sha256: "" },
+      { bytes: 0, sha256: "" },
+    ]) {
+      const other = { ...record, tables };
+      const s = patched({ [dir + "version.json"]: JSON.stringify(other) });
+      expect((await readVersion(s, second)).files).toEqual(read.files);
+    }
   });
 });
 

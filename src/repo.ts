@@ -19,7 +19,7 @@ export type VersionRecord = {
   author: { name: string; [k: string]: unknown };
   message: string;
   /** The version's tables.json */
-  tables: { path: string; bytes: number; sha256: string };
+  tables: { bytes: number; sha256: string };
   [k: string]: unknown;
 };
 
@@ -97,15 +97,6 @@ const VERSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9
 /** Whether a value is a version ID: a lower-case UUIDv7 */
 export const isVersionId = (value: unknown): value is string =>
   typeof value === "string" && VERSION_ID.test(value);
-
-/** Whether a path in version.json is a plain file name in the version's folder */
-export const isFileName = (value: unknown): value is string =>
-  typeof value === "string" &&
-  value !== "" &&
-  value !== "." &&
-  value !== ".." &&
-  !value.includes("/") &&
-  !value.includes("\\");
 
 const required = async (store: Store, key: string): Promise<string> => {
   const text = await store.text(key);
@@ -200,10 +191,8 @@ export const readVersion = async (store: Store, id: string, config?: Config): Pr
   const record = JSON.parse(text) as VersionRecord;
   if (record.id !== id) throw new FdlError(`${dir}version.json holds ${record.id}`);
   checkMajor(String(record.fdl), `version ${id}`);
-  const filesPath = record.tables?.path;
-  if (!isFileName(filesPath))
-    throw new FdlError(`version ${id} names a file outside it: ${String(filesPath)}`);
-  const files = await store.text(dir + filesPath);
+  // The files of a version have fixed names; the record's `path` is not read
+  const files = await store.text(dir + "tables.json");
   if (files === null) throw new FdlError(`version ${id} has no tables.json`);
   return { config: cfg, record, files: JSON.parse(files) as FileList };
 };

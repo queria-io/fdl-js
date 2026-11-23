@@ -180,7 +180,6 @@ const firstParents = async (
 const expireOne = async (
   store: MaintainedStore,
   id: string,
-  head: Head,
   now: Date,
   { by, message }: Pick<ExpireOptions, "by" | "message">,
 ) => {
@@ -256,7 +255,7 @@ export const expire = async (
   // A ref may have come to point at one of them meanwhile
   const stillHeld = await held(store);
   const expired = taken.filter((id) => !stillHeld.has(id));
-  for (const id of expired) await expireOne(store, id, await read(id), now, { by, message });
+  for (const id of expired) await expireOne(store, id, now, { by, message });
   return expired;
 };
 

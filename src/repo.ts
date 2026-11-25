@@ -18,6 +18,8 @@ export type VersionRecord = {
   created_at: string;
   author: { name: string; [k: string]: unknown };
   message: string;
+  /** The size, sha256 and storage format of metadata.db. A record past retention may have none */
+  metadata?: { bytes?: number; sha256?: string; storage?: string };
   /** The version's tables.json, at its fixed name in the version folder. A record past retention may have none */
   tables?: { bytes: number; sha256: string };
   [k: string]: unknown;

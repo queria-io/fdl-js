@@ -59,8 +59,56 @@ describe("planAttach", () => {
       c: { url: "https://x.org/census/", version: "first" },
     });
     expect(byTag!.version).toBe(V(1));
+    const [byId] = await planAttach(open, { c: { url: "https://x.org/census/", version: V(1) } });
+    expect(byId!.version).toBe(V(1));
     const [main] = await planAttach(open, { c: { url: "https://x.org/census/" } });
     expect(main!.version).toBe(V(2));
+  });
+
+  it("gives the metadata's sha256 from the record", async () => {
+    const record = `versions/${V(2)}/version.json`;
+    const withSha = {
+      ...census,
+      [record]: JSON.stringify({ fdl: "0.1", id: V(2), metadata: { sha256: "abc" } }),
+    };
+    const [a] = await planAttach(opener({ "https://x.org/census/": withSha }), {
+      c: { url: "https://x.org/census/" },
+    });
+    expect(a!.sha256).toBe("abc");
+  });
+
+  it("attaches a name once when a mirror holds the same version", async () => {
+    const mirror = opener({
+      "https://x.org/census/": census,
+      "https://m.org/census/": census,
+      "https://x.org/towns/": towns,
+    });
+    const plan = await planAttach(mirror, {
+      census: { url: "https://m.org/census/", version: V(1) },
+      towns: { url: "https://x.org/towns/" },
+    });
+    expect(plan.map((a) => [a.name, a.url])).toEqual([
+      ["census", "https://m.org/census/"],
+      ["towns", "https://x.org/towns/"],
+    ]);
+  });
+
+  it("refuses a name DuckDB would not tell apart or keeps for itself", async () => {
+    for (const name of ["Census", "memory", "temp", "a-b"])
+      await expect(planAttach(open, { [name]: { url: "https://x.org/census/" } })).rejects.toThrow(
+        FdlError,
+      );
+  });
+
+  it("refuses a dependency at a relative URL or a ref", async () => {
+    for (const dep of [{ url: "census/" }, { url: "https://x.org/census/", version: "first" }]) {
+      const t = dataset([{ census: dep }]);
+      await expect(
+        planAttach(opener({ "https://x.org/census/": census, "https://x.org/t/": t }), {
+          t: { url: "https://x.org/t/" },
+        }),
+      ).rejects.toThrow(FdlError);
+    }
   });
 
   it("attaches a name once when both ask for the same version", async () => {

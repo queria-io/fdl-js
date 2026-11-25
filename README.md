@@ -55,7 +55,7 @@ const plan = await planAttach((url) => httpStore(url), {
 for (const a of plan) await conn.query(attachSql(a)); // INSTALL ducklake and LOAD ducklake first
 ```
 
-`planAttach` takes the datasets keyed by the name SQL reads them under, in the shape of `dependencies` in `tables.json`. Each entry reads the version `version` names (a version ID, a tag or a branch), or the one `main` holds. The datasets the views of each version read come first in the plan, followed to the end. Each entry has the version ID it resolved to, the URL of that version's metadata and the data path. One name at two versions is refused, since SQL could not tell them apart. The function you pass opens each dataset's root, so credentials stay with you.
+`planAttach` takes the datasets keyed by the name SQL reads them under, in the shape of `dependencies` in `tables.json`. Each entry reads the version `version` names (a version ID, a tag or a branch), or the one `main` holds. The datasets the views of each version read come first in the plan, followed to the end. Each entry has the version ID it resolved to, the URL of that version's metadata, its `sha256` from `version.json` to check the metadata against, and the data path. One name at two versions is refused, since SQL could not tell them apart, and so is a name that `dependencies` would not allow (`[a-z_][a-z0-9_]*`, not `memory`, `system` or `temp`). The function you pass opens each dataset's root, so credentials stay with you. It is also called with the URLs that the datasets' `tables.json` name, so send a token only to the hosts it is meant for.
 
 ## Stores
 

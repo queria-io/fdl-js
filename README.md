@@ -40,6 +40,23 @@ Strings compare in code point order, as Parquet's statistics do, and null matche
 
 `version.files` is the version's `tables.json`. Each table there declares its `primary_key`, its asset columns (`assets`) and `profile: false` when the writer makes no profile for it, and a view may declare `profile: false` too. `dependencies` gives each other dataset the views read, keyed by the name their SQL reads it under: its `url` and, when pinned, the `version` to read. Descriptions of the dataset live in its own tables, which read like any other table.
 
+## Attaching in DuckDB
+
+`@queria-io/fdl-js/duckdb` gives the statements to read datasets in DuckDB, as [Reading](https://fdl.queria.io/spec/reading) describes. It does not run DuckDB: run the statements wherever yours is (WASM, Node, a server).
+
+```ts
+import { httpStore } from "@queria-io/fdl-js";
+import { attachSql, planAttach } from "@queria-io/fdl-js/duckdb";
+
+const plan = await planAttach((url) => httpStore(url), {
+  towns: { url: "https://data.example.org/towns/" },
+  census: { url: "https://data.example.org/census/", version: "2025-final" },
+});
+for (const a of plan) await conn.query(attachSql(a)); // INSTALL ducklake and LOAD ducklake first
+```
+
+`planAttach` takes the datasets keyed by the name SQL reads them under, in the shape of `dependencies` in `tables.json`. Each entry reads the version `version` names (a version ID, a tag or a branch), or the one `main` holds. The datasets the views of each version read come first in the plan, followed to the end. Each entry has the version ID it resolved to, the URL of that version's metadata and the data path. One name at two versions is refused, since SQL could not tell them apart. The function you pass opens each dataset's root, so credentials stay with you.
+
 ## Stores
 
 A store is where the dataset's root is. Keys are the layout's paths (`fdl.json`, `refs/heads/main`, `versions/<ID>/tables.json`, `tables/...`).

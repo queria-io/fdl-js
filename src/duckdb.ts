@@ -22,6 +22,8 @@ export type Attachment = {
   /** metadata.sha256 of the version's record, to check the metadata against before attaching it */
   sha256?: string;
   dataPath: string;
+  /** The version tables.json recorded, when it is gone and the one HEAD names is attached instead */
+  recorded?: string;
 };
 
 /**
@@ -62,7 +64,9 @@ const attachment = async (
 ): Promise<{ a: Omit<Attachment, "name">; deps: Record<string, Dependency> }> => {
   const store = open(url);
   const [config, id] = await Promise.all([readConfig(store), resolve(store, rev)]);
-  const version = await readVersion(store, id, config);
+  const version = await readVersion(store, id, config).catch((e: unknown) => {
+    throw e instanceof ExpiredError ? new ExpiredError(`${url}: ${e.message}`) : e;
+  });
   const sha256 = version.record.metadata?.sha256;
   return {
     a: {
@@ -89,6 +93,15 @@ export const planAttach = async (
 ): Promise<Attachment[]> => {
   // Each root and rev is read once, so HEAD read twice cannot give two versions
   const read = new Map<string, ReturnType<typeof attachment>>();
+  const readAt = (url: string, rev: string): ReturnType<typeof attachment> => {
+    const key = `${url}\n${rev}`;
+    let pending = read.get(key);
+    if (!pending) {
+      pending = attachment(open, url, rev);
+      read.set(key, pending);
+    }
+    return pending;
+  };
   const done = new Map<string, Awaited<ReturnType<typeof attachment>>>();
   // What each name was first found at, to refuse one name at two versions
   const seen = new Map<string, Awaited<ReturnType<typeof attachment>>>();
@@ -103,18 +116,13 @@ export const planAttach = async (
       throw new FdlError(`${from} names ${name} at ${dep.version}, not a version ID`);
     const url = withSlash(dep.url);
     const key = keyOf(dep);
-    let pending = read.get(key);
-    if (!pending) {
-      pending = attachment(open, url, dep.version ?? "HEAD");
-      // A version a dataset recorded that is gone since is read at what HEAD names
-      if (from !== undefined && dep.version !== undefined)
-        pending = pending.catch((e: unknown) => {
-          if (e instanceof ExpiredError) return attachment(open, url, "HEAD");
-          throw e;
-        });
-      read.set(key, pending);
-    }
-    const found = await pending;
+    // A version a dataset recorded that is gone since is read at what HEAD names, through the
+    // same read as an entry that names HEAD, so the two cannot give two versions
+    const found = await readAt(url, dep.version ?? "HEAD").catch((e: unknown) => {
+      if (from !== undefined && dep.version !== undefined && e instanceof ExpiredError)
+        return readAt(url, "HEAD").then((f) => ({ ...f, a: { ...f.a, recorded: dep.version } }));
+      throw e;
+    });
     done.set(key, found);
     const { a, deps } = found;
     const same = seen.get(name)?.a;

@@ -11,6 +11,7 @@ type Case = {
   versions: { id: string; parents: string[]; created_at: string }[];
   expired: string[];
   refs: Record<string, string>;
+  head?: string;
   take_out: string[];
 };
 const { now, grace_seconds, record, cases } = JSON.parse(
@@ -31,6 +32,7 @@ const store = (c: Case): MaintainedStore => {
         ] as const,
     ),
     ...Object.entries(c.refs).map(([name, id]) => [name, `${id}\n`] as const),
+    ["HEAD", `ref: ${c.head ?? "refs/heads/main"}\n`],
   ]);
   return {
     text: async (key) => objects.get(key) ?? null,

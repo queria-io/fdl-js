@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fileStore } from "../src/node.js";
 import {
   FdlError,
+  defaultBranch,
   open,
   readVersion,
   refreshing,
@@ -12,6 +13,12 @@ import {
   tableNames,
 } from "../src/repo.js";
 import type { Store } from "../src/store.js";
+
+const inMemory = (objects: Record<string, string>): Store => ({
+  text: async (key) => objects[key] ?? null,
+  size: async () => null,
+  range: async () => new ArrayBuffer(0),
+});
 
 const store = fileStore(new URL("./fixture/repo/", import.meta.url).pathname);
 
@@ -32,6 +39,41 @@ describe("resolve", () => {
 
   it("refuses a ref that is not there", async () => {
     await expect(resolve(store, "nope")).rejects.toThrow(FdlError);
+  });
+
+  it("reads refs/heads/main for HEAD when the dataset has no HEAD", async () => {
+    const id = "019a0000-0000-7000-8000-000000000001";
+    const memory = inMemory({ "refs/heads/main": `${id}\n` });
+    expect(await resolve(memory)).toBe(id);
+  });
+
+  it("refuses HEAD that names a branch that is not there", async () => {
+    const memory = inMemory({
+      HEAD: "ref: refs/heads/stable\n",
+      "refs/heads/main": "019a0000-0000-7000-8000-000000000001\n",
+    });
+    await expect(resolve(memory)).rejects.toThrow(FdlError);
+  });
+});
+
+describe("defaultBranch", () => {
+  it("is the branch HEAD names", async () => {
+    expect(await defaultBranch(inMemory({ HEAD: "ref: refs/heads/stable\n" }))).toBe(
+      "refs/heads/stable",
+    );
+  });
+
+  it("is refs/heads/main when the dataset has no HEAD", async () => {
+    expect(await defaultBranch(inMemory({}))).toBe("refs/heads/main");
+  });
+
+  it("refuses HEAD that names no branch", async () => {
+    await expect(defaultBranch(inMemory({ HEAD: "ref: refs/tags/first\n" }))).rejects.toThrow(
+      FdlError,
+    );
+    await expect(
+      defaultBranch(inMemory({ HEAD: "019a0000-0000-7000-8000-000000000001\n" })),
+    ).rejects.toThrow(FdlError);
   });
 });
 

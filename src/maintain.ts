@@ -8,6 +8,7 @@ import {
   type Config,
   type FileList,
   FdlError,
+  defaultBranch,
   type Version,
   isVersionId,
   readConfig,
@@ -214,14 +215,13 @@ export type ExpireOptions = {
   dryRun?: boolean;
 };
 
-const MAIN = "refs/heads/main";
-
 /**
  * Takes versions out of retention, as `fdl expire` does, choosing them as the spec does
  * (https://fdl.queria.io/spec/data-files#choosing-the-versions-to-take-out). Kept are the
- * versions a ref points at, their merge bases with main, the newest `keep` on each branch's
- * first-parent line, and those created at or after `since` or within the grace period. Nothing
- * is taken out before main has a version. Returns the IDs taken out, newest first
+ * versions a ref points at, their merge bases with the default branch (the one HEAD names), the
+ * newest `keep` on each branch's first-parent line, and those created at or after `since` or
+ * within the grace period. Nothing is taken out before the default branch has a version. Returns
+ * the IDs taken out, newest first
  */
 export const expire = async (
   store: MaintainedStore,
@@ -229,14 +229,14 @@ export const expire = async (
 ): Promise<string[]> => {
   if (keep < 1) throw new RangeError(`keep must be at least 1, got ${keep}`);
   const targets = await refTargets(store);
-  const main = targets.get(MAIN);
-  if (main === undefined) return [];
+  const head = targets.get(await defaultBranch(store));
+  if (head === undefined) return [];
   const read = records(store);
   const kept = new Set(targets.values());
-  const behindMain = await ancestors(main, read);
+  const behindHead = await ancestors(head, read);
   for (const [name, target] of targets) {
-    if (target !== main)
-      for (const id of await mergeBases(behindMain, await ancestors(target, read), read))
+    if (target !== head)
+      for (const id of await mergeBases(behindHead, await ancestors(target, read), read))
         kept.add(id);
     if (name.startsWith("refs/heads/"))
       for (const id of await firstParents(target, keep, read)) kept.add(id);

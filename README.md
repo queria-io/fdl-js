@@ -55,7 +55,7 @@ const plan = await planAttach((url) => httpStore(url), {
 for (const a of plan) await conn.query(attachSql(a)); // INSTALL ducklake and LOAD ducklake first
 ```
 
-`planAttach` takes the datasets keyed by the name SQL reads them under, in the shape of `dependencies` in `tables.json`. Each entry reads the version `version` names (a version ID, a tag or a branch), or the one `main` holds. The datasets the views of each version read come first in the plan, followed to the end. Each entry has the version ID it resolved to, the URL of that version's metadata, its `sha256` from `version.json` to check the metadata against, and the data path. One name at two versions is refused, since SQL could not tell them apart, and so is a name that `dependencies` would not allow (`[a-z_][a-z0-9_]*`, not `memory`, `system` or `temp`). The function you pass opens each dataset's root, so credentials stay with you. It is also called with the URLs that the datasets' `tables.json` name, so send a token only to the hosts it is meant for.
+`planAttach` takes the datasets keyed by the name SQL reads them under, in the shape of `dependencies` in `tables.json`. Each entry reads the version `version` names (a version ID, a tag or a branch), or the one its default branch holds (the branch `HEAD` names). The datasets the views of each version read come first in the plan, followed to the end. Each entry has the version ID it resolved to, the URL of that version's metadata, its `sha256` from `version.json` to check the metadata against, and the data path. One name at two versions is refused, since SQL could not tell them apart, and so is a name that `dependencies` would not allow (`[a-z_][a-z0-9_]*`, not `memory`, `system` or `temp`). The function you pass opens each dataset's root, so credentials stay with you. It is also called with the URLs that the datasets' `tables.json` name, so send a token only to the hosts it is meant for.
 
 ## Stores
 
@@ -76,7 +76,7 @@ Each retries a failed request once. A store is three functions (`text`, `size`, 
 
 ## Retention
 
-For the host of a dataset: `expire(store, { keep, graceMs })` takes versions out of retention as `fdl expire` does, keeping the newest `keep` on each branch, the versions refs point at, their merge bases with main, and those made within the grace period, and `collect(store, { graceMs })` deletes the data files and assets no live version reaches once past the grace period, as `fdl gc` does. Both read `tables.json` and never open the metadata. The assets a version reaches are read from the asset columns its `tables.json` declares, in its data files; pass `assetValues` to read them another way. While a live version's assets cannot be read, no asset is deleted.
+For the host of a dataset: `expire(store, { keep, graceMs })` takes versions out of retention as `fdl expire` does, keeping the newest `keep` on each branch, the versions refs point at, their merge bases with the default branch (the branch `HEAD` names), and those made within the grace period, and `collect(store, { graceMs })` deletes the data files and assets no live version reaches once past the grace period, as `fdl gc` does. Both read `tables.json` and never open the metadata. The assets a version reaches are read from the asset columns its `tables.json` declares, in its data files; pass `assetValues` to read them another way. While a live version's assets cannot be read, no asset is deleted.
 
 ```ts
 const store = r2MaintainedStore(env.BUCKET, "towns/");

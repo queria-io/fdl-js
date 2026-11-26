@@ -51,7 +51,7 @@ const isAbsoluteUrl = (url: unknown): url is string => {
 };
 
 /**
- * The version an entry names, or the one main holds when it names none, checked as a reader must
+ * The version an entry names, or the one HEAD names when it names none, checked as a reader must
  * (its record, its FDL version, not past retention), with the datasets its views read
  */
 const attachment = async (
@@ -78,19 +78,19 @@ const attachment = async (
 /**
  * The datasets to attach to read the given ones, each keyed by the name SQL reads it under, as
  * tables.json's dependencies are. The datasets their views read come first, followed to the end.
- * Each entry is the version it names, or the one main holds. Throws when one name would be two
+ * Each entry is the version it names, or the one HEAD names. Throws when one name would be two
  * versions, since SQL could not tell them apart
  */
 export const planAttach = async (
   open: Opener,
   datasets: Readonly<Record<string, Dependency>>,
 ): Promise<Attachment[]> => {
-  // Each root and rev is read once, so main read twice cannot give two versions
+  // Each root and rev is read once, so HEAD read twice cannot give two versions
   const read = new Map<string, ReturnType<typeof attachment>>();
   const done = new Map<string, Awaited<ReturnType<typeof attachment>>>();
   // What each name was first found at, to refuse one name at two versions
   const seen = new Map<string, Awaited<ReturnType<typeof attachment>>>();
-  const keyOf = (dep: Dependency) => `${withSlash(dep.url)}\n${dep.version ?? "refs/heads/main"}`;
+  const keyOf = (dep: Dependency) => `${withSlash(dep.url)}\n${dep.version ?? "HEAD"}`;
   // First every entry is read, siblings side by side. A name's dependencies are followed the
   // first time it is found, so a shared dataset is followed once and a cycle ends there
   const visit = async (name: string, dep: Dependency, from?: string): Promise<void> => {
@@ -103,7 +103,7 @@ export const planAttach = async (
     const key = keyOf(dep);
     let pending = read.get(key);
     if (!pending) {
-      pending = attachment(open, url, dep.version ?? "refs/heads/main");
+      pending = attachment(open, url, dep.version ?? "HEAD");
       read.set(key, pending);
     }
     const found = await pending;

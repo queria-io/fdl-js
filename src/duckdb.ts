@@ -88,7 +88,7 @@ export const planAttach = async (
   const plan: Attachment[] = [];
   // Names are taken before their dependencies are followed, so a cycle ends at the second visit
   const seen = new Map<string, Attachment>();
-  // Each root and rev is read once, so main read twice cannot give two versions
+  // Each root and rev is read once, so HEAD read twice cannot give two versions
   const read = new Map<string, ReturnType<typeof attachment>>();
   const visit = async (name: string, dep: Dependency, from?: string): Promise<void> => {
     checkName(name);
@@ -97,7 +97,7 @@ export const planAttach = async (
     if (from !== undefined && dep.version !== undefined && !isVersionId(dep.version))
       throw new FdlError(`${from} names ${name} at ${dep.version}, not a version ID`);
     const url = withSlash(dep.url);
-    const rev = dep.version ?? "refs/heads/main";
+    const rev = dep.version ?? "HEAD";
     const key = `${url}\n${rev}`;
     let pending = read.get(key);
     if (!pending) {

@@ -179,6 +179,21 @@ export const resolve = async (store: Store, rev = "HEAD"): Promise<string> => {
   return found;
 };
 
+/**
+ * The branch HEAD names ("refs/heads/main"): the default branch, which readers that name no ref
+ * read. A dataset without HEAD has refs/heads/main
+ */
+export const defaultBranch = async (store: Store): Promise<string> => {
+  const text = await store.text("HEAD");
+  if (text === null) return "refs/heads/main";
+  const value = text.trim();
+  if (!value.startsWith("ref: ")) throw new FdlError(`HEAD does not name a ref: ${value}`);
+  const target = value.slice(5).trim();
+  if (!target.startsWith("refs/heads/") || !safe(target))
+    throw new FdlError(`HEAD names no branch: ${target}`);
+  return target;
+};
+
 /** Reads a version: checks its record and expiry, and reads its tables.json */
 export const readVersion = async (store: Store, id: string, config?: Config): Promise<Version> => {
   const dir = `versions/${id}/`;

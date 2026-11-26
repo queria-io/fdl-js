@@ -12,6 +12,7 @@ const dataset = (
 ): Record<string, string> =>
   Object.fromEntries([
     ["fdl.json", JSON.stringify({ fdl: "0.1", data_dir: dataDir })],
+    ["HEAD", "ref: refs/heads/main\n"],
     ["refs/heads/main", V(versions.length)],
     ["refs/tags/first", V(1)],
     ...versions.flatMap((dependencies, i) => [
@@ -63,6 +64,18 @@ describe("planAttach", () => {
     expect(byId!.version).toBe(V(1));
     const [main] = await planAttach(open, { c: { url: "https://x.org/census/" } });
     expect(main!.version).toBe(V(2));
+  });
+
+  it("attaches what the branch HEAD names holds", async () => {
+    const census = {
+      ...dataset([{}, {}]),
+      HEAD: "ref: refs/heads/stable\n",
+      "refs/heads/stable": `${V(1)}\n`,
+    };
+    const [found] = await planAttach(opener({ "https://x.org/census/": census }), {
+      c: { url: "https://x.org/census/" },
+    });
+    expect(found!.version).toBe(V(1));
   });
 
   it("gives the metadata's sha256 from the record", async () => {

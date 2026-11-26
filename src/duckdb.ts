@@ -85,11 +85,14 @@ export const planAttach = async (
   open: Opener,
   datasets: Readonly<Record<string, Dependency>>,
 ): Promise<Attachment[]> => {
-  const plan: Attachment[] = [];
-  // Names are taken before their dependencies are followed, so a cycle ends at the second visit
-  const seen = new Map<string, Attachment>();
   // Each root and rev is read once, so HEAD read twice cannot give two versions
   const read = new Map<string, ReturnType<typeof attachment>>();
+  const done = new Map<string, Awaited<ReturnType<typeof attachment>>>();
+  // What each name was first found at, to refuse one name at two versions
+  const seen = new Map<string, Awaited<ReturnType<typeof attachment>>>();
+  const keyOf = (dep: Dependency) => `${withSlash(dep.url)}\n${dep.version ?? "HEAD"}`;
+  // First every entry is read, siblings side by side. A name's dependencies are followed the
+  // first time it is found, so a shared dataset is followed once and a cycle ends there
   const visit = async (name: string, dep: Dependency, from?: string): Promise<void> => {
     checkName(name);
     if (!isAbsoluteUrl(dep.url))
@@ -97,34 +100,44 @@ export const planAttach = async (
     if (from !== undefined && dep.version !== undefined && !isVersionId(dep.version))
       throw new FdlError(`${from} names ${name} at ${dep.version}, not a version ID`);
     const url = withSlash(dep.url);
-    const rev = dep.version ?? "HEAD";
-    const key = `${url}\n${rev}`;
+    const key = keyOf(dep);
     let pending = read.get(key);
     if (!pending) {
-      pending = attachment(open, url, rev);
+      pending = attachment(open, url, dep.version ?? "HEAD");
       read.set(key, pending);
     }
-    const { a: found, deps } = await pending;
-    const a: Attachment = { name, ...found };
-    const same = seen.get(name);
+    const found = await pending;
+    done.set(key, found);
+    const { a, deps } = found;
+    const same = seen.get(name)?.a;
+    // A version ID names one version wherever it is read from, origin or mirror
     if (same) {
-      // A version ID names one version wherever it is read from, origin or mirror
       if (same.version === a.version) return;
       throw new FdlError(
         `${name} is both ${same.url} at ${same.version} and ${a.url} at ${a.version}`,
       );
     }
-    seen.set(name, a);
-    await Object.entries(deps).reduce<Promise<void>>(
-      (prev, [n, d]) => prev.then(() => visit(n, d, `${a.url} at ${a.version}`)),
-      Promise.resolve(),
+    seen.set(name, found);
+    await Promise.all(
+      Object.entries(deps).map(([n, d]) => visit(n, d, `${a.url} at ${a.version}`)),
     );
-    plan.push(a);
   };
-  await Object.entries(datasets).reduce<Promise<void>>(
-    (prev, [n, d]) => prev.then(() => visit(n, d)),
-    Promise.resolve(),
-  );
+  await Promise.all(Object.entries(datasets).map(([n, d]) => visit(n, d)));
+  // Then the plan is laid out in the order the entries are listed, each dataset after the ones
+  // its views read, so it does not depend on which read finished first
+  const plan: Attachment[] = [];
+  const placed = new Set<string>();
+  const place = (name: string, dep: Dependency): void => {
+    if (placed.has(name)) return;
+    placed.add(name);
+    // The URL this entry names, and the dependencies followed for its version
+    const found = done.get(keyOf(dep));
+    const followed = seen.get(name);
+    if (!found || !followed) throw new FdlError(`${name} at ${dep.url} was not read`);
+    for (const [n, d] of Object.entries(followed.deps)) place(n, d);
+    plan.push({ name, ...found.a });
+  };
+  for (const [n, d] of Object.entries(datasets)) place(n, d);
   return plan;
 };
 

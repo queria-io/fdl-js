@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attachSql, planAttach } from "../src/duckdb.js";
-import { FdlError } from "../src/repo.js";
+import { ExpiredError, FdlError } from "../src/repo.js";
 import type { Store } from "../src/store.js";
 
 const V = (n: number) => `019a2f10-0c4d-7e88-a1b2-${String(n).padStart(12, "0")}`;
@@ -112,6 +112,24 @@ describe("planAttach", () => {
       ["census", "https://m.org/census/"],
       ["towns", "https://x.org/towns/"],
     ]);
+  });
+
+  it("attaches what HEAD names when a recorded version is gone", async () => {
+    const gone = { ...census, [`versions/${V(1)}/expired.json`]: "{}" };
+    const plan = await planAttach(
+      opener({ "https://x.org/census/": gone, "https://x.org/towns/": towns }),
+      { towns: { url: "https://x.org/towns/" } },
+    );
+    expect(plan.map((a) => [a.name, a.version])).toEqual([
+      ["census", V(2)],
+      ["towns", V(1)],
+    ]);
+    // A version the caller names is not swapped for another
+    await expect(
+      planAttach(opener({ "https://x.org/census/": gone }), {
+        c: { url: "https://x.org/census/", version: V(1) },
+      }),
+    ).rejects.toThrow(ExpiredError);
   });
 
   it("refuses a name DuckDB would not tell apart or keeps for itself", async () => {

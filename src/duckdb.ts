@@ -2,6 +2,7 @@
 // https://fdl.queria.io/spec/reading. Nothing here runs DuckDB: it returns the statements,
 // and the caller runs them wherever its DuckDB is (WASM, Node, a server)
 import {
+  ExpiredError,
   FdlError,
   isVersionId,
   readConfig,
@@ -78,7 +79,8 @@ const attachment = async (
 /**
  * The datasets to attach to read the given ones, each keyed by the name SQL reads it under, as
  * tables.json's dependencies are. The datasets their views read come first, followed to the end.
- * Each entry is the version it names, or the one HEAD names. Throws when one name would be two
+ * Each entry is the version it names, or the one HEAD names. A dependency whose recorded version
+ * is past retention or withdrawn is the one HEAD names. Throws when one name would be two
  * versions, since SQL could not tell them apart
  */
 export const planAttach = async (
@@ -104,6 +106,12 @@ export const planAttach = async (
     let pending = read.get(key);
     if (!pending) {
       pending = attachment(open, url, dep.version ?? "HEAD");
+      // A version a dataset recorded that is gone since is read at what HEAD names
+      if (from !== undefined && dep.version !== undefined)
+        pending = pending.catch((e: unknown) => {
+          if (e instanceof ExpiredError) return attachment(open, url, "HEAD");
+          throw e;
+        });
       read.set(key, pending);
     }
     const found = await pending;

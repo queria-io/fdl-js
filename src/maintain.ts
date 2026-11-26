@@ -220,7 +220,8 @@ export type ExpireOptions = {
  * (https://fdl.queria.io/spec/data-files#choosing-the-versions-to-take-out). Kept are the
  * versions a ref points at, their merge bases with the default branch (the one HEAD names), the
  * newest `keep` on each branch's first-parent line, and those created at or after `since` or
- * within the grace period. Nothing is taken out before the default branch has a version. Returns the IDs taken out, newest first
+ * within the grace period. Nothing is taken out before the default branch has a version. Returns
+ * the IDs taken out, newest first
  */
 export const expire = async (
   store: MaintainedStore,

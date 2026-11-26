@@ -78,6 +78,14 @@ describe("planAttach", () => {
     expect(found!.version).toBe(V(1));
   });
 
+  it("attaches what refs/heads/main holds when the dataset has no HEAD", async () => {
+    const { HEAD: _, ...census } = dataset([{}, {}]);
+    const [found] = await planAttach(opener({ "https://x.org/census/": census }), {
+      c: { url: "https://x.org/census/" },
+    });
+    expect(found!.version).toBe(V(2));
+  });
+
   it("gives the metadata's sha256 from the record", async () => {
     const record = `versions/${V(2)}/version.json`;
     const withSha = {

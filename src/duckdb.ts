@@ -51,7 +51,7 @@ const isAbsoluteUrl = (url: unknown): url is string => {
 };
 
 /**
- * The version an entry names, or the one main holds when it names none, checked as a reader must
+ * The version an entry names, or the one HEAD names when it names none, checked as a reader must
  * (its record, its FDL version, not past retention), with the datasets its views read
  */
 const attachment = async (
@@ -78,7 +78,7 @@ const attachment = async (
 /**
  * The datasets to attach to read the given ones, each keyed by the name SQL reads it under, as
  * tables.json's dependencies are. The datasets their views read come first, followed to the end.
- * Each entry is the version it names, or the one main holds. Throws when one name would be two
+ * Each entry is the version it names, or the one HEAD names. Throws when one name would be two
  * versions, since SQL could not tell them apart
  */
 export const planAttach = async (

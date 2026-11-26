@@ -143,6 +143,9 @@ export const readConfig = async (store: Store): Promise<Config> => {
   return { ...raw, fdl: String(raw.fdl), data_dir: dataDir };
 };
 
+/** The branch a dataset without HEAD reads by default */
+const MAIN = "refs/heads/main";
+
 /** Candidates for a short name, in Git's order (refs/<name>, refs/tags/<name>, refs/heads/<name>) */
 const candidates = (rev: string): string[] =>
   rev === "HEAD" || rev.startsWith("refs/")
@@ -152,14 +155,15 @@ const candidates = (rev: string): string[] =>
 /**
  * The version ID that rev names: a version ID itself, "HEAD", a full ref ("refs/tags/2025-final")
  * or a short one ("main", "2025-final"). Symbolic refs ("ref: refs/heads/main") are followed.
- * Refs change, so callers decide how long to keep the answer
+ * A dataset without HEAD reads refs/heads/main for it. Refs change, so callers decide how long to
+ * keep the answer
  */
 export const resolve = async (store: Store, rev = "HEAD"): Promise<string> => {
   if (VERSION_ID.test(rev)) return rev;
   if (!safe(rev)) throw new FdlError(`no ref ${rev}`);
   const follow = async (key: string, depth: number): Promise<string | null> => {
     const text = await store.text(key);
-    if (text === null) return null;
+    if (text === null) return key === "HEAD" ? follow(MAIN, depth + 1) : null;
     const value = text.trim();
     if (!value.startsWith("ref: ")) {
       if (!VERSION_ID.test(value)) throw new FdlError(`${key} does not hold a version ID`);
@@ -185,7 +189,7 @@ export const resolve = async (store: Store, rev = "HEAD"): Promise<string> => {
  */
 export const defaultBranch = async (store: Store): Promise<string> => {
   const text = await store.text("HEAD");
-  if (text === null) return "refs/heads/main";
+  if (text === null) return MAIN;
   const value = text.trim();
   if (!value.startsWith("ref: ")) throw new FdlError(`HEAD does not name a ref: ${value}`);
   const target = value.slice(5).trim();

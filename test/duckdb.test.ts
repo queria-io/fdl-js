@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attachSql, planAttach } from "../src/duckdb.js";
-import { FdlError } from "../src/repo.js";
+import { ExpiredError, FdlError } from "../src/repo.js";
 import type { Store } from "../src/store.js";
 
 const V = (n: number) => `019a2f10-0c4d-7e88-a1b2-${String(n).padStart(12, "0")}`;
@@ -111,6 +111,47 @@ describe("planAttach", () => {
     expect(plan.map((a) => [a.name, a.url])).toEqual([
       ["census", "https://m.org/census/"],
       ["towns", "https://x.org/towns/"],
+    ]);
+  });
+
+  it("attaches what HEAD names when a recorded version is gone", async () => {
+    const gone = { ...census, [`versions/${V(1)}/expired.json`]: "{}" };
+    const plan = await planAttach(
+      opener({ "https://x.org/census/": gone, "https://x.org/towns/": towns }),
+      { towns: { url: "https://x.org/towns/" } },
+    );
+    expect(plan.map((a) => [a.name, a.version, a.recorded])).toEqual([
+      ["census", V(2), V(1)],
+      ["towns", V(1), undefined],
+    ]);
+    // A version the caller names is not swapped for another
+    await expect(
+      planAttach(opener({ "https://x.org/census/": gone }), {
+        c: { url: "https://x.org/census/", version: V(1) },
+      }),
+    ).rejects.toThrow(ExpiredError);
+  });
+
+  it("reads HEAD once for a gone version and an entry that names HEAD", async () => {
+    // main moves to V(3) after it is first read
+    const moving = { ...dataset([{}, {}, {}]), [`versions/${V(1)}/expired.json`]: "{}" };
+    let reads = 0;
+    const store: Store = {
+      text: async (key) =>
+        key === "refs/heads/main" ? (reads++ === 0 ? V(2) : V(3)) : (moving[key] ?? null),
+      size: async () => null,
+      range: async () => new ArrayBuffer(0),
+    };
+    const plan = await planAttach(
+      (url) => (url === "https://x.org/census/" ? store : opener({ [url]: towns })(url)),
+      {
+        census: { url: "https://x.org/census/" },
+        towns: { url: "https://x.org/towns/" },
+      },
+    );
+    expect(plan.map((a) => [a.name, a.version])).toEqual([
+      ["census", V(2)],
+      ["towns", V(1)],
     ]);
   });
 

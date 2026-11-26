@@ -8,6 +8,9 @@ const KNOWN_MAJOR = "0";
 
 export class FdlError extends Error {}
 
+/** The version is past retention or withdrawn: it has no metadata to open */
+export class ExpiredError extends FdlError {}
+
 export type Config = { fdl: string; data_dir: string };
 
 export type VersionRecord = {
@@ -207,7 +210,7 @@ export const readVersion = async (store: Store, id: string, config?: Config): Pr
     store.text(dir + "expired.json"),
   ]);
   // A withdrawn version may have lost its version.json, so expiry is checked first
-  if (expired !== null) throw new FdlError(`version ${id} is past retention or withdrawn`);
+  if (expired !== null) throw new ExpiredError(`version ${id} is past retention or withdrawn`);
   if (text === null) throw new NotFoundError(dir + "version.json");
   const record = JSON.parse(text) as VersionRecord;
   if (record.id !== id) throw new FdlError(`${dir}version.json holds ${record.id}`);

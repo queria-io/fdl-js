@@ -128,7 +128,7 @@ describe("planAttach", () => {
     ).rejects.toThrow(FdlError);
   });
 
-  it("reads the datasets a version's views read side by side, in the order tables.json lists them", async () => {
+  it("reads the datasets a version's views read side by side, each after the ones it reads", async () => {
     const roots = {
       "https://x.org/census/": census,
       "https://x.org/towns/": towns,
@@ -156,6 +156,51 @@ describe("planAttach", () => {
     const plan = await planAttach(slow, { report: { url: "https://x.org/report/" } });
     expect(plan.map((p) => p.name)).toEqual(["census", "towns", "report"]);
     expect(most).toBeGreaterThan(2);
+  });
+
+  it("keeps the URL an entry names, whichever read finishes first", async () => {
+    const roots = {
+      "https://x.org/census/": census,
+      "https://m.org/census/": census,
+      "https://x.org/towns/": towns,
+    };
+    const slowMirror = (url: string): Store => {
+      const store = opener(roots)(url);
+      return {
+        ...store,
+        text: async (key) => {
+          if (url.startsWith("https://m.org/")) await new Promise((r) => setTimeout(r, 20));
+          return store.text(key);
+        },
+      };
+    };
+    const plan = await planAttach(slowMirror, {
+      census: { url: "https://m.org/census/", version: V(1) },
+      towns: { url: "https://x.org/towns/" },
+    });
+    expect(plan.map((a) => [a.name, a.url])).toEqual([
+      ["census", "https://m.org/census/"],
+      ["towns", "https://x.org/towns/"],
+    ]);
+  });
+
+  it("follows a dataset many others read once", async () => {
+    // Each dataset reads all the ones before it: following every path would take 2^n steps
+    const n = 40;
+    const roots: Record<string, Record<string, string>> = {};
+    for (let i = 0; i < n; i++)
+      roots[`https://x.org/d${i}/`] = dataset([
+        Object.fromEntries(
+          Array.from({ length: i }, (_, j) => [
+            `d${j}`,
+            { url: `https://x.org/d${j}/`, version: V(1) },
+          ]),
+        ),
+      ]);
+    const plan = await planAttach(opener(roots), {
+      [`d${n - 1}`]: { url: `https://x.org/d${n - 1}/` },
+    });
+    expect(plan.map((p) => p.name)).toEqual(Array.from({ length: n }, (_, i) => `d${i}`));
   });
 
   it("ends at a cycle", async () => {

@@ -128,6 +128,36 @@ describe("planAttach", () => {
     ).rejects.toThrow(FdlError);
   });
 
+  it("reads the datasets a version's views read side by side, in the order tables.json lists them", async () => {
+    const roots = {
+      "https://x.org/census/": census,
+      "https://x.org/towns/": towns,
+      "https://x.org/report/": dataset([
+        {
+          towns: { url: "https://x.org/towns/", version: V(1) },
+          census: { url: "https://x.org/census/", version: V(1) },
+        },
+      ]),
+    };
+    let reading = 0;
+    let most = 0;
+    const slow = (url: string): Store => {
+      const store = opener(roots)(url);
+      return {
+        ...store,
+        text: async (key) => {
+          most = Math.max(most, ++reading);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          reading -= 1;
+          return store.text(key);
+        },
+      };
+    };
+    const plan = await planAttach(slow, { report: { url: "https://x.org/report/" } });
+    expect(plan.map((p) => p.name)).toEqual(["census", "towns", "report"]);
+    expect(most).toBeGreaterThan(2);
+  });
+
   it("ends at a cycle", async () => {
     const a = dataset([{ b: { url: "https://x.org/b/" } }]);
     const b = dataset([{ a: { url: "https://x.org/a/" } }]);

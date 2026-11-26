@@ -85,12 +85,19 @@ export const planAttach = async (
   open: Opener,
   datasets: Readonly<Record<string, Dependency>>,
 ): Promise<Attachment[]> => {
-  const plan: Attachment[] = [];
-  // Names are taken before their dependencies are followed, so a cycle ends at the second visit
+  // The version each name was found at, to refuse one name at two versions
   const seen = new Map<string, Attachment>();
   // Each root and rev is read once, so main read twice cannot give two versions
   const read = new Map<string, ReturnType<typeof attachment>>();
-  const visit = async (name: string, dep: Dependency, from?: string): Promise<void> => {
+  // Siblings are read side by side. Each visit returns its dependencies before itself, so keeping
+  // the first time each name appears keeps every dataset after the ones its views read.
+  // A cycle ends at the name already on the path
+  const visit = async (
+    name: string,
+    dep: Dependency,
+    path: ReadonlySet<string>,
+    from?: string,
+  ): Promise<Attachment[]> => {
     checkName(name);
     if (!isAbsoluteUrl(dep.url))
       throw new FdlError(`${from ?? "the plan"} names ${name} at no absolute URL`);
@@ -107,25 +114,22 @@ export const planAttach = async (
     const { a: found, deps } = await pending;
     const a: Attachment = { name, ...found };
     const same = seen.get(name);
-    if (same) {
-      // A version ID names one version wherever it is read from, origin or mirror
-      if (same.version === a.version) return;
+    // A version ID names one version wherever it is read from, origin or mirror
+    if (same && same.version !== a.version)
       throw new FdlError(
         `${name} is both ${same.url} at ${same.version} and ${a.url} at ${a.version}`,
       );
-    }
-    seen.set(name, a);
-    await Object.entries(deps).reduce<Promise<void>>(
-      (prev, [n, d]) => prev.then(() => visit(n, d, `${a.url} at ${a.version}`)),
-      Promise.resolve(),
+    seen.set(name, same ?? a);
+    if (path.has(name)) return [];
+    const inner = new Set(path).add(name);
+    const below = await Promise.all(
+      Object.entries(deps).map(([n, d]) => visit(n, d, inner, `${a.url} at ${a.version}`)),
     );
-    plan.push(a);
+    return [...below.flat(), same ?? a];
   };
-  await Object.entries(datasets).reduce<Promise<void>>(
-    (prev, [n, d]) => prev.then(() => visit(n, d)),
-    Promise.resolve(),
-  );
-  return plan;
+  const found = await Promise.all(Object.entries(datasets).map(([n, d]) => visit(n, d, new Set())));
+  const names = new Set<string>();
+  return found.flat().filter((a) => !names.has(a.name) && names.add(a.name));
 };
 
 const literal = (s: string) => `'${s.replaceAll("'", "''")}'`;
